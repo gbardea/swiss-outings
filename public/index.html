@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Swiss Outings</title>
+<meta name="description" content="Concerts, carnivals, cow parades and village gigs across Switzerland — planned together.">
+<meta name="theme-color" content="#D52B1E">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Outings">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/icons/icon-192.png">
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..900&family=Instrument+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<div id="gate" hidden></div>
+<header class="top">
+  <div class="wrap">
+    <div class="bar">
+      <div class="brand">
+        <span class="cross" aria-hidden="true"><svg viewBox="0 0 12 12"><path d="M4.5 1h3v3.5H11v3H7.5V11h-3V7.5H1v-3h3.5z" fill="#fff"/></svg></span>
+        <h1>Swiss Outings</h1>
+        <small id="subline">Switzerland</small>
+      </div>
+      <nav class="seg" aria-label="View">
+        <button data-view="discover" aria-pressed="true">Discover</button>
+        <button data-view="calendar" aria-pressed="false">Calendar</button>
+        <button data-view="who" aria-pressed="false">Who's it for</button>
+        <button data-view="ours" aria-pressed="false">Our plans</button>
+      </nav>
+      <button class="iconbtn fbtn" id="openFilters" aria-label="Filters"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M7 12h10M10 18h4"/></svg>Filters<span class="fcount" id="fcount" hidden></span></button>
+      <button class="iconbtn" id="openSettings" aria-label="Settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg><span class="blabel">Settings</span></button>
+    </div>
+    <div class="filters" id="filters">
+      <div class="search"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input id="q" type="search" placeholder="Search bands, villages, venues…" aria-label="Search events"></div>
+      <div class="chips" id="audChips" role="group" aria-label="Audience"></div>
+      <select class="chip" id="when" aria-label="Time range">
+        <option value="all">Any time</option>
+        <option value="7">Next 7 days</option>
+        <option value="30">Next 30 days</option>
+        <option value="90">Next 3 months</option>
+        <option value="later">3+ months out</option>
+      </select>
+      <select class="chip" id="region" aria-label="Region">
+        <option value="all">All Switzerland</option>
+        <option value="near">Zurich &amp; Gold Coast</option>
+        <option value="Gold Coast">Gold Coast only</option>
+        <option value="Zurich City">Zurich City</option>
+        <option value="Canton Zurich">Canton Zurich</option>
+        <option value="Switzerland">Rest of Switzerland</option>
+      </select>
+      <div class="more-filters">
+        <div class="chips" id="toggles"></div>
+      </div>
+      <div class="catrow" id="catChips" role="group" aria-label="Category"></div>
+      <div class="fdone"><button class="chip" id="clearFilters" type="button">Clear all</button><button class="btn primary" id="closeFilters" type="button">Show events</button></div>
+    </div>
+  </div>
+</header>
+
+<main class="wrap" id="main">
+  <div class="grid" aria-busy="true"><div class="skel"></div><div class="skel"></div><div class="skel"></div><div class="skel"></div></div>
+</main>
+
+<div class="fscrim" id="fscrim"></div>
+<div id="sheetHost"></div>
+<div id="toastHost" aria-live="polite"></div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script src="/config.js"></script>
+<script src="/core.js"></script>
+<script src="/app.js"></script>
+</body>
+</html>
