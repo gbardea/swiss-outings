@@ -241,9 +241,9 @@ function render(){
 }
 function statusLine(){
   const m=S.meta||{}; const up=S.events.filter(e=>!isPast(e));
-  return `<div class="status-line"><span><b>${up.length}</b> upcoming</span><span><b>${up.filter(e=>e.free).length}</b> free</span><span><b>${up.filter(e=>e.scale==="gem").length}</b> hidden gems</span><span>Last scan <b>${esc(m.lastRun?fmtStamp(m.lastRun):"—")}</b></span>${m.lastAdded!=null?`<span><b>${m.lastAdded}</b> added last scan</span>`:""}</div>`;
+  return `<div class="status-line"><span><b>${up.length}</b> upcoming</span><span><b>${up.filter(e=>e.free).length}</b> free</span><span><b>${up.filter(e=>e.scale==="gem").length}</b> hidden gems</span><span>Updated <b>${esc(m.lastRun?fmtStamp(m.lastRun):"—")}</b></span>${up.some(isNew)?`<button type="button" class="newchip" data-tg="newonly" aria-pressed="${S.toggles.has("newonly")}">✦ ${up.filter(isNew).length} new this week</button>`:""}</div>${window.SO_install?window.SO_install.bannerHTML():""}`;
 }
-function fmtStamp(s){ const d=new Date(s); if(isNaN(d)) return s; return DOW[d.getDay()]+" "+d.getDate()+" "+MON[d.getMonth()]+" "+hhmm(d); }
+function fmtStamp(s){ const d=new Date(s); if(isNaN(d)) return s; const k=Math.round((dayOnly(d)-dayOnly(new Date()))/864e5); const day=k===0?"today":k===-1?"yesterday":DOW[d.getDay()]+" "+d.getDate()+" "+MON[d.getMonth()]; return day+" "+hhmm(d); }
 function weekendRange(){
   const d=TODAY.getDay(); let sat;
   if(d===6) sat=TODAY; else if(d===0) sat=addDays(TODAY,-1); else sat=addDays(TODAY,6-d);
@@ -405,6 +405,7 @@ async function openSettings(){
   $("#sheetHost").innerHTML=`<div class="scrim" data-close="1"><div class="sheet" role="dialog" aria-modal="true" aria-label="Settings"><div class="inner" style="padding-top:calc(22px + env(safe-area-inset-top,0px))">
     <div style="display:flex;align-items:center;gap:10px"><h2 style="margin-right:auto">Settings</h2><button class="iconbtn" data-close="1" aria-label="Close">${icon("x")}</button></div>
     <div class="form">
+      ${window.SO_install&&!window.SO_install.isStandalone()?`<button class="ig-row" type="button" data-ig-open><img src="/icons/apple-touch-icon.png" alt="" width="40" height="40"><span><b>Install on your phone</b><small>Step-by-step, takes 20 seconds</small></span><span aria-hidden="true">›</span></button>`:""}
       <div><label>Your household</label>
         <div class="hidrow"><input id="hhName" value="${esc(h.name||"")}" aria-label="Household name" style="flex:1;background:var(--surface2);border:1px solid var(--line);border-radius:10px;padding:9px 11px"><button class="chip" id="saveHh" type="button">Save</button></div>
         <p class="desc" style="margin:8px 0 4px">Members: ${members.map(m=>esc(m.display_name||"Member")).join(", ")||"just you"}</p>
@@ -490,5 +491,5 @@ $("#region").addEventListener("change", e=>{ S.region=e.target.value; render(); 
 
 /* ---------- boot ---------- */
 buildFilters(); render();
-window.__app={S,render,buildFilters,parseD,isPast};
+window.__app={S,render,buildFilters,parseD,isPast,poster,esc,fmtStamp,toast,isNew,openSettings};
 })();
