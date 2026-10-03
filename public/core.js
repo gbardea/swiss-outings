@@ -324,8 +324,9 @@ function openSheet(id){
       <div class="btnrow">
         <button class="btn primary" data-act="cal" data-id="${esc(e.id)}">${icon("cal")} Add to calendar</button>
         <a class="btn" href="${esc(gcalUrl(e))}" target="_blank" rel="noopener">${icon("cal")} Google Calendar</a>
-        ${e.ticketUrl && e.ticketStatus!=="free entry" ? `<a class="btn ticket" href="${esc(e.ticketUrl)}" target="_blank" rel="noopener">${icon("ticket")} ${e.ticketStatus==="sold out"?"Tickets (sold out)":"Get tickets"}</a>`:""}
+        ${e.ticketUrl && e.ticketStatus!=="free entry" ? `<button class="btn ticket" data-act="tix" data-id="${esc(e.id)}" aria-expanded="${S.tixOpen===e.id}">${icon("ticket")} ${e.ticketStatus==="sold out"?"Tickets (sold out)":"Get tickets"}</button>`:""}
       </div>
+      <div id="tixPanel">${S.tixOpen===e.id?tixHTML(e):""}</div>
       <div class="btnrow">
         <button class="btn ${myMark(e.id)==="interested"?"primary":""}" data-act="int" data-id="${esc(e.id)}" aria-pressed="${myMark(e.id)==="interested"}">${icon("heart")} Keen</button>
         <button class="btn ${myMark(e.id)==="going"?"primary":""}" data-act="go" data-id="${esc(e.id)}" aria-pressed="${myMark(e.id)==="going"}">${icon("check")} Going</button>
@@ -358,7 +359,71 @@ function openSheet(id){
 }
 function hostOf(u){ try{ return new URL(u).hostname.replace(/^www\./,""); }catch(e){ return u; } }
 function ticketLine(e){ const st=e.ticketStatus||"unknown"; const map={"on sale":"On sale now","selling fast":"Selling fast. Book soon","sold out":"Sold out","not yet on sale":"Not on sale yet","at the door":"Pay at the door","free entry":"No tickets needed","registration":"Free or paid registration required","unknown":"Check the official page"}; return (e.ticketsRequired===false&&st!=="registration"?"No tickets needed":map[st]||st); }
-function closeSheet(){ $("#sheetHost").innerHTML=""; document.body.style.overflow=""; }
+function closeSheet(){ $("#sheetHost").innerHTML=""; document.body.style.overflow=""; S.tixOpen=null; }
+
+/* ---------- ticket details (live check of the seller's page) ---------- */
+const AVAIL={"available":["Available","ok"],"few left":["Few left","hot"],"sold out":["Sold out","sold"],"not yet on sale":["Not on sale yet","wait"],"cancelled":["Cancelled","sold"]};
+function availPill(a){ const x=AVAIL[a]; return x?`<span class="av-pill ${x[1]}">${x[0]}</span>`:""; }
+function perfText(st){ const d=parseD(st); if(!d) return esc(st||""); return DOW[d.getDay()]+" "+d.getDate()+" "+MON[d.getMonth()]+(d.getFullYear()!==TODAY.getFullYear()?" "+d.getFullYear():"")+(/T/.test(st)?" · "+hhmm(d):""); }
+function chf(n){ n=+n; return "CHF "+(Number.isInteger(n)?String(n):n.toFixed(2)); }
+function tixHTML(e){
+  const t=(S.tix||{})[e.id]||{state:"loading"};
+  const live=t.data&&t.data.live, saved=e.ticketInfo&&typeof e.ticketInfo==="object"?e.ticketInfo:null;
+  const info=live||saved||{};
+  const seller=(t.data&&t.data.seller)||hostOf(e.ticketUrl||e.url||"");
+  const opts=(info.options||[]).filter(o=>o&&(o.priceCHF!=null||o.availability)), perfs=info.performances||[];
+  let head;
+  if(t.state==="loading") head=`<span class="tix-live"><span class="spin" aria-hidden="true"></span>Checking ${esc(seller)}…</span>`;
+  else if(live) head=`<span class="tix-live ok">Live from ${esc(live.seller||seller)} · checked ${esc(hhmm(new Date(t.at)))}</span>`;
+  else head=`<span class="tix-live">${t.state==="error"?"Couldn't run the live check.":t.data&&t.data.reason==="blocked"?esc(seller)+" doesn't allow automatic checks.":"The seller's page couldn't be read automatically."} Showing ${saved?"details saved by the daily scan"+(saved.checkedAt?" on "+esc(saved.checkedAt):""):"what the daily scan saved"}.</span>`;
+  const status=live&&live.status&&live.status!=="unknown"?live.status:({"on sale":"available","selling fast":"few left","sold out":"sold out","not yet on sale":"not yet on sale"})[e.ticketStatus]||"";
+  const rows=[];
+  rows.push(["When", esc(whenText(e))+(!e.timeKnown&&!info.start?" · time TBC":"")]);
+  if(info.doors||info.start) rows.push(["Times", [info.doors?"Doors "+esc(info.doors):"", info.start?"Start "+esc(info.start):""].filter(Boolean).join(" · ")]);
+  rows.push(["Where", esc(e.venue||"")]);
+  if(info.seating) rows.push(["Seating", esc(info.seating)]);
+  if(info.ageLimit) rows.push(["Age", esc(info.ageLimit)]);
+  if(info.saleStart) rows.push(["Sale starts", esc(perfText(info.saleStart))]);
+  const priceBlock = opts.length
+    ? `<table class="tix-opts"><tbody>${opts.map(o=>`<tr><td>${esc(o.label||"Ticket")}</td><td class="mono">${o.priceCHF!=null?esc(chf(o.priceCHF)):""}</td><td>${availPill(o.availability)}</td></tr>`).join("")}</tbody></table>`
+    : `<p class="tix-price"><b class="mono">${esc(priceLabel(e).t)}</b>${e.priceText&&!e.free&&e.priceText!==priceLabel(e).t?` <span>${esc(e.priceText)}</span>`:""}</p>`;
+  const perfBlock = perfs.length>1 ? `<div class="tix-sub">All dates</div><ul class="tix-perfs">${perfs.map(p=>`<li><span class="mono">${perfText(p.start)}</span>${availPill(p.availability)}</li>`).join("")}</ul>` : "";
+  const notes=(info.notes||[]).concat(typeof info.note==="string"?[info.note]:[]).filter(Boolean);
+  const soldOut=status==="sold out";
+  return `<section class="tix" aria-label="Ticket details" aria-busy="${t.state==="loading"}">
+    <div class="tix-head"><h3>Tickets ${availPill(status)}</h3>${head}</div>
+    <dl class="tix-facts">${rows.map(r=>`<dt>${r[0]}</dt><dd>${r[1]}</dd>`).join("")}</dl>
+    <div class="tix-sub">Prices${live?"":" (as last saved)"}</div>${priceBlock}${perfBlock}
+    ${notes.map(n=>`<div class="note warn">${esc(n)}</div>`).join("")}
+    <div class="btnrow">
+      <a class="btn ticket" href="${esc(e.ticketUrl)}" target="_blank" rel="noopener">${icon("ticket")} ${soldOut?"Open seller's page":"Continue to checkout"}</a>
+      <button class="btn" data-act="tixrefresh" data-id="${esc(e.id)}" ${t.state==="loading"?"disabled":""}>Check again</button>
+      <button class="btn" data-act="tixclose" data-id="${esc(e.id)}">Not now</button>
+    </div>
+    <p class="tix-foot">You pay on ${esc(seller)}, with your own card, TWINT or Apple Pay. Swiss Outings never sees payment details. Booking fees may be added at checkout.</p>
+  </section>`;
+}
+function paintTix(id){ const e=S.events.find(x=>x.id===id), host=$("#tixPanel"); if(e&&host&&S.tixOpen===id&&$(`#sheetHost .sheet[data-ev="${CSS.escape(id)}"]`)) host.innerHTML=tixHTML(e); }
+async function loadTix(id, force){
+  S.tix=S.tix||{};
+  const have=S.tix[id];
+  if(have&&have.state==="done"&&!force&&Date.now()-have.at<10*60e3){ paintTix(id); return; }
+  S.tix[id]={state:"loading", data:have&&have.data, at:have&&have.at}; paintTix(id);
+  try{
+    // "Check again" uses a 5-minute bucket so the shared 30-minute cache can be skipped, but not on every tap.
+    const r=await fetch("/api/tickets?id="+encodeURIComponent(id)+(force?"&r="+Math.floor(Date.now()/300e3):""));
+    if(!r.ok) throw new Error("http "+r.status);
+    const data=await r.json();
+    S.tix[id]={state:"done", data, at:data.checkedAt?new Date(data.checkedAt).getTime():Date.now()};
+  }catch(err){ S.tix[id]={state:"error", data:null, at:Date.now()}; }
+  paintTix(id);
+}
+function openTix(id){
+  if(S.tixOpen===id){ S.tixOpen=null; const h=$("#tixPanel"); if(h) h.innerHTML=""; const b=$('#sheetHost [data-act="tix"]'); b&&b.setAttribute("aria-expanded","false"); return; }
+  S.tixOpen=id; const b=$('#sheetHost [data-act="tix"]'); b&&b.setAttribute("aria-expanded","true");
+  loadTix(id,false);
+  const h=$("#tixPanel"); h&&h.scrollIntoView({behavior:"smooth",block:"nearest"});
+}
 
 /* ---------- calendar ---------- */
 function pad(n){ return String(n).padStart(2,"0"); }
@@ -455,7 +520,7 @@ function buildFilters(){
 document.addEventListener("click", ev=>{
   const t=ev.target;
   const act=t.closest("[data-act]");
-  if(act){ ev.stopPropagation(); const id=act.dataset.id; if(act.dataset.act==="skip") hideEvent(id); else if(act.dataset.act==="int") setMark(id,"interested"); else if(act.dataset.act==="go") setMark(id,"going"); else if(act.dataset.act==="cal") addToCalendar(id); return; }
+  if(act){ ev.stopPropagation(); const id=act.dataset.id; if(act.dataset.act==="skip") hideEvent(id); else if(act.dataset.act==="int") setMark(id,"interested"); else if(act.dataset.act==="go") setMark(id,"going"); else if(act.dataset.act==="cal") addToCalendar(id); else if(act.dataset.act==="tix") openTix(id); else if(act.dataset.act==="tixrefresh") loadTix(id,true); else if(act.dataset.act==="tixclose"){ if(S.tixOpen===id) openTix(id); } return; }
   const v=t.closest(".seg button"); if(v){ S.view=v.dataset.view; try{localStorage.setItem("so.view",S.view);}catch(e){} render(); window.scrollTo({top:0}); return; }
   const a=t.closest("[data-aud]"); if(a){ S.aud=a.dataset.aud; buildFilters(); render(); return; }
   const g=t.closest("[data-tg]"); if(g){ const k=g.dataset.tg; if(S.toggles.has(k)) S.toggles.delete(k); else { S.toggles.add(k); if(k==="gem") S.toggles.delete("big"); if(k==="big") S.toggles.delete("gem"); } buildFilters(); render(); return; }
