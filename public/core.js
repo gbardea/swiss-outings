@@ -210,6 +210,7 @@ function cardHTML(e){
     </div>
     <div class="body">
       <h3 class="title">${esc(e.title)}</h3>
+      ${e.summary?`<p class="blurb">${esc(e.summary)}</p>`:""}
       <div class="meta">
         <div class="row"><span class="mono">${esc(whenText(e))}</span></div>
         <div class="row"><span>${esc(e.venue||"")}${e.city&&!(e.venue||"").includes(e.city)?", "+esc(e.city):""}</span></div>
