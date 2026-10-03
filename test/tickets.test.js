@@ -29,7 +29,7 @@ r = extract(plain, { title: "Der Lachs der Weisheit – an Irish love story with
 assert.deepStrictEqual(r.options.map(o => o.priceCHF), [52, 42, 25]);
 assert.strictEqual(r.options[0].label, "Kategorie 1");
 assert.strictEqual(r.doors, "19:00"); assert.strictEqual(r.start, "20:00");
-assert.strictEqual(r.status, "few left"); assert.strictEqual(r.ageLimit, "12+");
+assert.strictEqual(r.status, "unknown"); assert.ok(/few tickets/.test(r.notes[0])); assert.strictEqual(r.ageLimit, "12+");
 
 // 4. Several performances, one sold out
 const multi = `<title>Tosca - Opernhaus</title><script type="application/ld+json">{"@graph":[
@@ -44,7 +44,7 @@ assert.strictEqual(r.status, "available");
 // 5. Sold-out page, euro prices ignored, broken JSON tolerated
 const so = `<title>Kingfishr</title><h1>Kingfishr</h1><script type="application/ld+json">{broken</script><p>Tickets EUR 30</p><p>AUSVERKAUFT</p>`;
 r = extract(so, { title: "Kingfishr", start: "2026-11-22" }, "https://kaufleuten.ch/event/kingfishr/");
-assert.strictEqual(r.status, "sold out"); assert.strictEqual(r.options.length, 0);
+assert.strictEqual(r.status, "unknown"); assert.ok(/sold out/.test(r.notes[0])); assert.strictEqual(r.options.length, 0);
 
 // 6. Page with nothing useful
 assert.strictEqual(extract(`<title>Kingfishr</title><p>Great band.</p>`, { title: "Kingfishr", start: "2026-11-22" }, "https://x.ch/"), null);
