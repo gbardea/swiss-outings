@@ -1,0 +1,10 @@
+{
+  "appId": "ch.swissoutings.app",
+  "appName": "Outings",
+  "webDir": "public",
+  "ios": { "contentInset": "never", "backgroundColor": "#EEF1EE" },
+  "plugins": {
+    "SplashScreen": { "launchAutoHide": true, "launchShowDuration": 600, "backgroundColor": "#D52B1E", "showSpinner": false },
+    "PushNotifications": { "presentationOptions": ["badge", "sound", "alert"] }
+  }
+}

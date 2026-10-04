@@ -97,7 +97,7 @@ const screens = {
       if(!/^\S+@\S+\.\S+$/.test(email)) return screens.signup("Please enter a valid email address.");
       if(pass.length<8) return screens.signup("Please use at least 8 characters for your password.");
       cacheSet("email", email); const b=ev.target.querySelector("button[type=submit]"); busy(b,true,"Creating your account…");
-      const r = await sb.auth.signUp({ email, password: pass, options:{ emailRedirectTo: location.origin + "/?confirmed=1" } });
+      const r = await sb.auth.signUp({ email, password: pass, options:{ emailRedirectTo: window.SO_native.origin + "/?confirmed=1" } });
       busy(b,false);
       if(r.error) return screens.signup(friendly(r.error.message));
       if(r.data && r.data.user && Array.isArray(r.data.user.identities) && r.data.user.identities.length===0) return screens.signin("You already have an account with this email. Sign in below.");
@@ -114,7 +114,7 @@ const screens = {
       ${msgBox(note, "ok")}
       <div class="ob-btns">${mail}<button class="btn primary ob-cta" type="button" id="iveConfirmed">I've confirmed, continue</button></div>
       <p class="ob-foot">Nothing arrived? Check spam, or <a href="#" id="resend">send it again</a>. · <a href="#" data-go="signup">Use a different email</a></p>`));
-    $("#resend").onclick = async e => { e.preventDefault(); const {error}=await sb.auth.resend({type:"signup", email, options:{emailRedirectTo: location.origin + "/?confirmed=1"}}); screens.checkEmail(email, error?friendly(error.message):"Sent again. It can take a minute."); };
+    $("#resend").onclick = async e => { e.preventDefault(); const {error}=await sb.auth.resend({type:"signup", email, options:{emailRedirectTo: window.SO_native.origin + "/?confirmed=1"}}); screens.checkEmail(email, error?friendly(error.message):"Sent again. It can take a minute."); };
     $("#iveConfirmed").onclick = async () => { if(!(await tryAutoSignIn())) screens.signin("Great! Now sign in with your password.", email); };
   },
 
@@ -142,7 +142,7 @@ const screens = {
     gate(card(`<h2>Reset your password</h2><p class="ob-sub">We'll email you a link to choose a new one.</p>
       <form id="f" class="ob-form">${field("em","Email",`type="email" autocomplete="email" required value="${esc(cacheGet("email")||"")}"`)}${msgBox(m)}
       <button class="btn primary ob-cta" type="submit">Email me a link</button></form>`, {back:"signin"}));
-    $("#f").onsubmit = async ev => { ev.preventDefault(); const email=$("#em").value.trim(); const {error}=await sb.auth.resetPasswordForEmail(email,{redirectTo: location.origin+"/?reset=1"}); if(error) return screens.reset(friendly(error.message)); screens.signin("Sent! Open the link in the email to choose a new password.", email); };
+    $("#f").onsubmit = async ev => { ev.preventDefault(); const email=$("#em").value.trim(); const {error}=await sb.auth.resetPasswordForEmail(email,{redirectTo: window.SO_native.origin+"/?reset=1"}); if(error) return screens.reset(friendly(error.message)); screens.signin("Sent! Open the link in the email to choose a new password.", email); };
   },
 
   newPassword(m){
@@ -284,5 +284,5 @@ sb.auth.onAuthStateChange((ev)=>{ if(ev==="PASSWORD_RECOVERY") screens.newPasswo
 start();
 
 /* ---------- service worker ---------- */
-if("serviceWorker" in navigator){ window.addEventListener("load", ()=>navigator.serviceWorker.register("/sw.js").catch(()=>{})); }
+if("serviceWorker" in navigator && !window.SO_native.isNative){ window.addEventListener("load", ()=>navigator.serviceWorker.register("/sw.js").catch(()=>{})); }
 })();

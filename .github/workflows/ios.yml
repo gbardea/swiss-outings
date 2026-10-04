@@ -1,0 +1,23 @@
+name: iOS build
+on:
+  push:
+    branches: [main]
+    paths: ["public/**", "ios/**", "capacitor.config.json", "package.json", "package-lock.json", ".github/workflows/ios.yml"]
+  workflow_dispatch:
+concurrency: { group: ios-${{ github.ref }}, cancel-in-progress: true }
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - run: npx cap sync ios
+      - name: Build for simulator (no signing)
+        run: |
+          set -o pipefail
+          xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Debug \
+            -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
+            CODE_SIGNING_ALLOWED=NO build | tail -n 40

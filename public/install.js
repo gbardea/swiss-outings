@@ -6,13 +6,13 @@ const isIOS = /iPhone|iPad|iPod/.test(ua) || (navigator.platform === "MacIntel" 
 const isAndroid = /Android/.test(ua);
 const inApp = /FBAN|FBAV|FB_IAB|Instagram|Line\/|WhatsApp|GSA\/|LinkedInApp|Twitter|Snapchat|Pinterest|MicroMessenger/.test(ua);
 const iosOtherBrowser = isIOS && /CriOS|FxiOS|EdgiOS|OPiOS|DuckDuckGo/.test(ua);
-const isStandalone = () => window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone === true;
+const isStandalone = () => (window.SO_native && window.SO_native.isNative) || window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone === true;
 const isMobile = isIOS || isAndroid;
 let deferredPrompt = null;
 window.addEventListener("beforeinstallprompt", e => { e.preventDefault(); deferredPrompt = e; document.querySelectorAll("[data-native-install]").forEach(b => b.hidden = false); });
 window.addEventListener("appinstalled", () => { deferredPrompt = null; try{ localStorage.setItem("so.installed","1"); }catch(e){} });
 
-const URL_ = location.origin;
+const URL_ = (window.SO_native && window.SO_native.origin) || location.origin;
 const I = {
   share: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7.5 7.5 4.5-4.5 4.5 4.5"/><path d="M6 11H5a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-8a1 1 0 0 0-1-1h-1"/></svg>',
   dots: '<svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>',

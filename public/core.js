@@ -412,7 +412,7 @@ async function loadTix(id, force){
   S.tix[id]={state:"loading", data:have&&have.data, at:have&&have.at}; paintTix(id);
   try{
     // "Check again" uses a 5-minute bucket so the shared 30-minute cache can be skipped, but not on every tap.
-    const r=await fetch("/api/tickets?id="+encodeURIComponent(id)+(force?"&r="+Math.floor(Date.now()/300e3):""));
+    const r=await fetch(window.SO_native.api("/api/tickets")+"?id="+encodeURIComponent(id)+(force?"&r="+Math.floor(Date.now()/300e3):""));
     if(!r.ok) throw new Error("http "+r.status);
     const data=await r.json();
     S.tix[id]={state:"done", data, at:data.checkedAt?new Date(data.checkedAt).getTime():Date.now()};
@@ -444,14 +444,19 @@ function gcalUrl(e){
 async function addToCalendar(id){
   const e=S.events.find(x=>x.id===id); if(!e) return;
   if(myMark(id)!=="going") setMark(id,"going");
+  if(window.SO_native.isNative){
+    const t=timing(e); window.SO_native.haptic("light");
+    const ok=await window.SO_native.addToCalendar({title:e.title, start:t.s.getTime(), end:(t.allDay?addDays(t.e,-1):t.e).getTime(), allDay:t.allDay, location:[e.venue,e.address].filter(Boolean).join(", "), notes:[e.summary, priceLabel(e).t, e.ticketUrl?("Tickets: "+e.ticketUrl):""].filter(Boolean).join("\n"), url:e.url||e.ticketUrl||""});
+    if(ok){ toast("Added to Our plans"); return; }
+  }
   toast("Opening your calendar · added to Our plans");
-  setTimeout(()=>{ window.location.href = "/api/ics?id="+encodeURIComponent(id); }, 250);
+  setTimeout(()=>{ window.location.href = window.SO_native.api("/api/ics")+"?id="+encodeURIComponent(id); }, 250);
 }
 
 /* ---------- picks write ---------- */
 async function setMark(id, state){
   if(!S.uid || !S.household){ toast("Sign in first."); return; }
-  const cur=myMark(id); const next = cur===state ? null : state;
+  const cur=myMark(id); const next = cur===state ? null : state; window.SO_native.haptic(next==="going"?"success":"light");
   const m=Object.assign({}, S.marks[id]||{}); if(next) m[S.uid]=next; else delete m[S.uid]; S.marks[id]=m; render(); if($("#sheetHost .sheet[data-ev]")) openSheet(id);
   const q = next ? sb.from("picks").upsert({event_id:id, user_id:S.uid, household_id:S.household.id, state:next, updated_at:new Date().toISOString()})
                  : sb.from("picks").delete().eq("event_id",id).eq("user_id",S.uid);
@@ -480,7 +485,7 @@ async function openSettings(){
       <div><label>Friends</label>
         <p class="desc" style="margin:6px 0 8px">Invite a friend’s household: create a code and send it with the app link. They join as their own household and are connected to you. Your plans stay private unless you switch sharing on per friend.</p>
         <div class="btnrow"><button class="btn primary" type="button" id="newInvite">Create invite code</button></div>
-        ${invites.filter(i=>!i.used_by_household).map(i=>`<div class="hidrow"><span class="mono">${esc(i.code)}</span><button class="chip" type="button" data-copy="${esc(location.origin+"/?invite="+i.code)}">Copy invite link</button></div>`).join("")}
+        ${invites.filter(i=>!i.used_by_household).map(i=>`<div class="hidrow"><span class="mono">${esc(i.code)}</span><button class="chip" type="button" data-copy="${esc(window.SO_native.origin+"/?invite="+i.code)}">Copy invite link</button></div>`).join("")}
         <div class="hidrow" style="margin-top:6px"><input id="friendCode" placeholder="Friend’s friend-code" style="flex:1;background:var(--surface2);border:1px solid var(--line);border-radius:10px;padding:9px 11px"><button class="chip" type="button" id="connectFriend">Connect</button></div>
         <p class="desc" style="margin:4px 0">Your friend-code: <b class="mono" style="color:var(--ink)">${esc(h.friend_code||"")}</b></p>
         ${mine.map(f=>`<div class="hidrow"><span>${esc(names[f.friend_household_id]||"Friend")}</span><label style="display:flex;align-items:center;gap:6px;font:500 13px var(--f-body);text-transform:none;letter-spacing:0;color:var(--ink)"><input type="checkbox" data-share="${esc(f.friend_household_id)}" ${f.share_plans?"checked":""}> Share our plans</label></div>`).join("")||'<p class="desc" style="margin:4px 0">No friends connected yet.</p>'}
@@ -550,7 +555,7 @@ document.addEventListener("keydown", ev=>{
   if(ev.key==="Enter"){ const op=ev.target.closest&&ev.target.closest("[data-open]"); if(op && ev.target===op){ openSheet(op.dataset.open); } const d=ev.target.closest&&ev.target.closest("[data-day]"); if(d && ev.target===d){ S.calSel=d.dataset.day; render(); } }
 });
 document.addEventListener("change", ev=>{ const s=ev.target.closest&&ev.target.closest("[data-share]"); if(s){ (async()=>{ const {error}=await sb.from("friendships").update({share_plans:s.checked}).eq("household_id",S.household.id).eq("friend_household_id",s.dataset.share); toast(error?error.message:(s.checked?"Now sharing your plans":"Stopped sharing")); })(); } });
-function copyText(t){ try{ navigator.clipboard.writeText(t).then(()=>toast("Copied"),()=>toast(t)); }catch(e){ toast(t); } }
+function copyText(t){ if(window.SO_native.isNative && /^https?:/.test(t)){ window.SO_native.share({title:"Swiss Outings", text:"Join us on Swiss Outings", url:t}); return; } try{ navigator.clipboard.writeText(t).then(()=>toast("Copied"),()=>toast(t)); }catch(e){ toast(t); } }
 let qt; $("#q").addEventListener("input", e=>{ clearTimeout(qt); qt=setTimeout(()=>{ S.q=e.target.value.trim().toLowerCase(); render(); },150); });
 $("#when").addEventListener("change", e=>{ S.when=e.target.value; render(); });
 $("#region").addEventListener("change", e=>{ S.region=e.target.value; render(); });
