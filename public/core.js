@@ -260,6 +260,7 @@ function icon(n){
     wa:'<path d="M4 20l1.3-4A8 8 0 1 1 8.4 19z"/><path d="M9 8.5c0 3.5 3 6.5 6.5 6.5l1-1.6-2-1-1 1a4 4 0 0 1-2.4-2.4l1-1-1-2z" fill="currentColor" stroke="none"/>',
     users:'<circle cx="9" cy="8" r="3.2"/><path d="M3 20a6 6 0 0 1 12 0"/><path d="M16 4.5a3.2 3.2 0 0 1 0 6.4M18 14a6 6 0 0 1 3 6"/>',
     mic:'<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21M8.5 21h7"/>',
+    calq:'<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/><path d="m9 15 2 2 4-4"/>',
     help:'<circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.4 2.3c-.6.3-.9.8-.9 1.4v.6"/><circle cx="12" cy="17" r=".6" fill="currentColor"/>'};
   const fill = n==="heart"?"currentColor":"none";
   return `<svg viewBox="0 0 24 24" fill="${fill}" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${P[n]}</svg>`;
@@ -399,10 +400,12 @@ function openSheet(id){
       <p class="lede">${esc(e.summary)}</p>
       ${listenBtn(e,true)}
       <div class="btnrow">
+        <button class="btn when" data-act="when" data-id="${esc(e.id)}">${icon("calq")} When can we go?</button>
         <button class="btn primary" data-act="cal" data-id="${esc(e.id)}">${icon("cal")} Add to calendar</button>
         <a class="btn" href="${esc(gcalUrl(e))}" target="_blank" rel="noopener" data-track="calendar" data-id="${esc(e.id)}">${icon("cal")} Google Calendar</a>
         ${safeHref(e.ticketUrl) && e.ticketStatus!=="free entry" ? `<button class="btn ticket" data-act="tix" data-id="${esc(e.id)}" aria-expanded="${S.tixOpen===e.id}">${icon("ticket")} ${e.ticketStatus==="sold out"?"Tickets (sold out)":"Get tickets"}</button>`:""}
       </div>
+      <div id="whenPanel"></div>
       <div id="tixPanel">${S.tixOpen===e.id?tixHTML(e):""}</div>
       <div class="btnrow">
         <button class="btn ${myMark(e.id)==="interested"?"primary":""}" data-act="int" data-id="${esc(e.id)}" aria-pressed="${myMark(e.id)==="interested"}">${icon("heart")} Keen</button>
@@ -577,6 +580,7 @@ async function openSettings(){
         <p class="desc" style="margin:4px 0">Your friend-code: <b class="mono" style="color:var(--ink)">${esc(h.friend_code||"")}</b></p>
         ${mine.map(f=>`<div class="hidrow"><span>${esc(names[f.friend_household_id]||"Friend")}</span><label style="display:flex;align-items:center;gap:6px;font:500 13px var(--f-body);text-transform:none;letter-spacing:0;color:var(--ink)"><input type="checkbox" data-share="${esc(f.friend_household_id)}" ${f.share_plans?"checked":""}> Share our plans</label></div>`).join("")||'<p class="desc" style="margin:4px 0">No friends connected yet.</p>'}
       </div>
+      <div id="calSet"><label>Your calendar</label><p class="desc" style="margin:6px 0 8px">Used by “When can we go?” to suggest dates you're free. Only busy/free times are checked.</p><div id="calSetBody" class="desc">Checking…</div></div>
       ${S.isAdmin?`<div><label for="brief">The brief (admin)</label><p class="desc" style="margin:6px 0 8px">The daily scan reads this before it searches.</p><textarea id="brief">${esc(brief)}</textarea><div class="btnrow" style="margin-top:8px"><button class="btn primary" type="button" id="saveBrief">Save brief</button></div></div>`:""}
       <p class="note">Daily scan: every morning. ${S.config.scan&&S.config.scan.lastRun?"Last run "+esc(fmtStamp(S.config.scan.lastRun))+". "+esc(S.config.scan.lastNote||""):""}</p>
       <div><label>Hidden events (${Object.keys(S.hidden).length})</label><p class="desc" style="margin:6px 0 8px">Events your household marked “Not for us”. The daily scan learns from this list.</p>${Object.values(S.hidden).sort((a,b)=>(b.at||"").localeCompare(a.at||"")).map(x=>`<div class="hidrow"><span>${esc(x.title||x.eventId)}</span><button type="button" class="chip" data-restore="${esc(x.eventId)}">Restore</button></div>`).join("")||'<p class="desc" style="margin:0">Nothing hidden yet.</p>'}</div>
@@ -584,6 +588,10 @@ async function openSettings(){
       <p class="note">Privacy: we store your email, name, household and picks to run the app. Nothing is shared outside your household unless you switch on sharing for a friend. “Delete my account” permanently removes your login, email, picks and activity.</p>
     </div></div></div></div>`;
   document.body.style.overflow="hidden";
+  calStatus().then(c=>{ const el=$("#calSetBody"); if(!el) return; el.innerHTML = c
+    ? `<div class="hidrow"><span>✓ ${esc(c.label||c.provider)}</span><button class="chip" type="button" id="calOff">Disconnect</button></div>`
+    : `<button class="btn" type="button" data-act="calconnect">${icon("calq")} Connect my calendar</button>`;
+    const off=$("#calOff"); if(off) off.onclick=async()=>{ await sb.rpc("delete_my_calendar"); toast("Calendar disconnected"); openSettings(); }; });
 }
 
 /* ---------- sharing an event ---------- */
@@ -681,6 +689,59 @@ function openTips(){
   try{ localStorage.setItem("so.tipsSeen","1"); }catch(x){}
 }
 function maybeShowTips(){ let seen=false; try{ seen=localStorage.getItem("so.tipsSeen")==="1"; }catch(x){} if(!seen && !$("#sheetHost").innerHTML && document.getElementById("gate").hidden) setTimeout(()=>{ if(!$("#sheetHost").innerHTML) openTips(); }, 1200); }
+
+/* ---------- "When can we go?" (checks connected calendars) ---------- */
+async function authHeader(){ const {data}=await sb.auth.getSession(); const t=data.session&&data.session.access_token; return t?{Authorization:"Bearer "+t}:{}; }
+async function calApi(action, payload){
+  const r=await fetch(window.SO_native.api("/api/cal")+"?action="+action,{method:"POST",headers:{"Content-Type":"application/json",...(await authHeader())},body:JSON.stringify(payload||{})});
+  let j={}; try{ j=await r.json(); }catch(x){} if(!r.ok) throw new Error(j.error||"Something went wrong. Please try again."); return j;
+}
+function whoFree(r){ const n=(r.checked||[]).length; return n>1?(n===2?"you're both free":"everyone's free"):"you're free"; }
+async function whenCanWeGo(id){
+  const host=$("#whenPanel"); if(!host) return;
+  host.innerHTML=`<section class="whenbox" aria-busy="true"><span class="spin"></span> Checking your calendar…</section>`;
+  let r; try{ r=await calApi("when",{event_id:id}); }catch(err){ host.innerHTML=`<section class="whenbox"><p>${esc(err.message)}</p></section>`; return; }
+  track("when", id, {result: r.needsConnect?"not connected":r.best?"free":"busy"});
+  if(r.needsConnect){ host.innerHTML=`<section class="whenbox"><h3>Find a date that works</h3><p>Connect your calendar once and we'll tell you which ${r.dates>1?"of the "+r.dates+" dates ":"date "}you're free for. We only check free/busy times and never store your appointments.</p><div class="btnrow"><button class="btn primary" type="button" data-act="calconnect">${icon("calq")} Connect my calendar</button></div></section>`; return; }
+  if(r.past){ host.innerHTML=`<section class="whenbox"><p>This event has no upcoming dates.</p></section>`; return; }
+  const book=(x,primary)=>`<button class="btn ${primary?"primary":""}" type="button" data-act="bookon" data-id="${esc(id)}" data-on="${esc(x.local)}">${primary?icon("check")+" Book it":esc(x.when)}</button>`;
+  const missing=Object.values(S.members).filter(m=>m.user_id!==S.uid && !(r.checked||[]).includes(m.display_name||"Partner")).map(m=>m.display_name||"Your partner");
+  let h=`<section class="whenbox">`;
+  if(r.best) h+=`<div class="whenbest"><span class="ok">✓</span><div><b>${esc(r.best.when)}</b><small>${r.single?"The only date, and "+whoFree(r):whoFree(r)[0].toUpperCase()+whoFree(r).slice(1)}${r.best.pref>0?" · a good day for this":""}</small></div>${book(r.best,true)}</div>`;
+  else h+=`<div class="whenbest none"><span class="no">!</span><div><b>${r.single?"You're busy then":"No free date found"}</b><small>${r.single?"Your calendar has something that overlaps (including travel time).":"Every date clashes with your calendars."}</small></div></div>`;
+  if(r.more&&r.more.length) h+=`<div class="whenmore"><span>Also free:</span>${r.more.map(x=>book(x,false)).join("")}</div>`;
+  if(r.clashes&&r.clashes.length) h+=`<ul class="whenclash">${r.clashes.map(c=>`<li>⚠️ ${esc(c.when)}: ${esc(c.busy.join(" & "))} ${c.busy.length>1||c.busy[0]!=="You"?"busy":"are busy"}</li>`).join("")}</ul>`;
+  const notes=[]; if((r.failed||[]).length) notes.push("Couldn't read "+r.failed.join(" & ")+"'s calendar right now.");
+  if(missing.length) notes.push(missing.join(" & ")+" hasn't connected a calendar yet, so only "+((r.checked||[]).join(" & ")||"yours")+" was checked.");
+  if(!r.meConnected) notes.push(`You haven't connected your own calendar. <a href="#" data-act="calconnect">Connect it</a>`);
+  if(notes.length) h+=`<p class="whennote">${notes.join(" ")}</p>`;
+  host.innerHTML=h+`</section>`;
+}
+function bookOn(id, on){
+  const e=S.events.find(x=>x.id===id); if(!e) return;
+  if(myMark(id)!=="going") setMark(id,"going");
+  track("calendar", id, {on});
+  toast("Booked in · added to Our plans");
+  setTimeout(()=>{ window.location.href=window.SO_native.api("/api/ics")+"?id="+encodeURIComponent(id)+"&on="+encodeURIComponent(on); }, 250);
+}
+async function calStatus(){ try{ const {data}=await sb.rpc("my_calendar"); return (data&&data[0])||null; }catch(x){ return null; } }
+function openCalendarConnect(msg){
+  const IG=window.SO_install||{}; const ios=IG.isIOS;
+  sheetShell("Connect your calendar", `
+    <p class="desc" style="margin:0">Swiss Outings only checks when you're <b>busy or free</b> to suggest dates. It never stores or shows your appointments, and you can disconnect anytime in Settings.</p>
+    <section class="invcard"><div class="invhead">${icon("calq")}<div><h3>Google Calendar</h3><p>Sign in with Google and allow “see your availability”.</p></div></div>
+      <button class="btn primary" type="button" id="gcalBtn">Connect Google Calendar</button></section>
+    <section class="invcard"><div class="invhead">${icon("link")}<div><h3>iPhone (iCloud), Outlook or other</h3><p>Copy your calendar's private link and paste it here.</p></div></div>
+      <details ${ios?"open":""}><summary>How to get the link on iPhone</summary><ol class="steps"><li>Open the <b>Calendar</b> app and tap <b>Calendars</b> at the bottom.</li><li>Tap the <b>ⓘ</b> next to your main calendar (it must be an iCloud calendar).</li><li>Switch on <b>Public Calendar</b>, then tap <b>Share Link…</b> → <b>Copy</b>.</li><li>Paste it below. The link is long and random, so nobody can guess it.</li></ol></details>
+      <details><summary>How to get the link in Outlook</summary><ol class="steps"><li>Open Outlook on the web → <b>Settings</b> → <b>Calendar</b> → <b>Shared calendars</b>.</li><li>Under <b>Publish a calendar</b>, pick your calendar and <b>Can view when I'm busy</b>, then <b>Publish</b>.</li><li>Copy the <b>ICS</b> link and paste it below.</li></ol></details>
+      <details><summary>How to get the link in Google Calendar (instead of signing in)</summary><ol class="steps"><li>On a computer, open Google Calendar → <b>Settings</b> → your calendar.</li><li>Copy the <b>Secret address in iCal format</b> and paste it below.</li></ol></details>
+      <form id="icsForm" class="askform"><input id="icsUrl" class="inp" placeholder="webcal://… or https://…" autocomplete="off" inputmode="url"><button class="btn primary" type="submit">Connect</button></form>
+      ${msg?`<p class="ob-msg err" role="alert">${esc(msg)}</p>`:""}</section>`);
+  $("#gcalBtn").onclick=async()=>{ const b=$("#gcalBtn"); b.disabled=true; b.textContent="Opening Google…"; try{ const r=await calApi("google-start"); track("calendar_connect",null,{provider:"google"}); flushLog(); location.href=r.url; }catch(err){ b.disabled=false; b.textContent="Connect Google Calendar"; toast(err.message); } };
+  $("#icsForm").onsubmit=async ev=>{ ev.preventDefault(); const b=ev.target.querySelector("button"); b.disabled=true; b.textContent="Checking…";
+    try{ const r=await calApi("link",{url:$("#icsUrl").value}); track("calendar_connect",null,{provider:"ics"}); closeSheet(); toast(r.label+" connected. Tap “When can we go?” on any event."); }
+    catch(err){ openCalendarConnect(err.message); } };
+}
 
 /* ---------- ask by voice or in your own words ---------- */
 function askBar(){
@@ -812,7 +873,7 @@ function buildFilters(){
 document.addEventListener("click", ev=>{
   const t=ev.target;
   const act=t.closest("[data-act]");
-  if(act){ ev.stopPropagation(); const id=act.dataset.id; if(act.dataset.act==="listen"){ listen(id); return; } if(act.dataset.act==="skip") hideEvent(id); else if(act.dataset.act==="int") setMark(id,"interested"); else if(act.dataset.act==="go") setMark(id,"going"); else if(act.dataset.act==="cal") addToCalendar(id); else if(act.dataset.act==="tix") openTix(id); else if(act.dataset.act==="tixrefresh") loadTix(id,true); else if(act.dataset.act==="tixclose"){ if(S.tixOpen===id) openTix(id); } return; }
+  if(act){ ev.stopPropagation(); const id=act.dataset.id; if(act.dataset.act==="listen"){ listen(id); return; } if(act.dataset.act==="when"){ whenCanWeGo(id); return; } if(act.dataset.act==="bookon"){ bookOn(id, act.dataset.on); return; } if(act.dataset.act==="calconnect"){ openCalendarConnect(); return; } if(act.dataset.act==="skip") hideEvent(id); else if(act.dataset.act==="int") setMark(id,"interested"); else if(act.dataset.act==="go") setMark(id,"going"); else if(act.dataset.act==="cal") addToCalendar(id); else if(act.dataset.act==="tix") openTix(id); else if(act.dataset.act==="tixrefresh") loadTix(id,true); else if(act.dataset.act==="tixclose"){ if(S.tixOpen===id) openTix(id); } return; }
   const tr=t.closest("[data-track]"); if(tr){ track(tr.dataset.track, tr.dataset.id||null, tr.dataset.track==="tickets"?{step:"checkout"}:{}); }
   const sh=t.closest("[data-sendev]"); if(sh){ ev.stopPropagation(); shareEvent(sh.dataset.id, sh.dataset.sendev); return; }
   const sv=t.closest("[data-send]"); if(sv){ sendInvite(sv.dataset.send, sv.dataset.who); return; }

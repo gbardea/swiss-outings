@@ -10,10 +10,11 @@ Family & friends event planner for Switzerland (Zurich first). Static PWA + Supa
 - `api/voice.js` + `lib/voice.js` – “Listen”: 20-second spoken summary per event (AI script + natural voice, cached at the edge per event version); `api/voice-warm.js` pre-generates new events daily (Vercel cron)
 - `api/ask.js` – voice / plain-words search → filters (signed-in users only)
 - `api/share.js` – public page for shared links `/e/<id>` with a WhatsApp/iMessage preview card
+- `api/cal.js` + `lib/calendar.js` – “When can we go?”: checks the household's connected calendars (Google free/busy or a private iCloud/Outlook/Google link) and suggests dates; only encrypted connections are stored, never appointments
 - `api/contact.js` – emails contact messages / venue suggestions to the owner (they are also stored in the admin inbox)
 - `public/admin.html` – admin dashboard (users, activity, events, messages, households); data only via `admin_*` functions that refuse non-admins
 
-Tests: `npm test` (unit + API tests with mocked services + a Playwright end-to-end run against a local server with a fake Supabase).
+Tests: `npm test` (unit + API tests with mocked services + a Playwright end-to-end run against a local server with a fake Supabase). Database: `sh test/db.sh` loads the schema and all migrations into a throwaway local Postgres 16 and runs the security and calendar suites.
 
 Deploy: import this repo in Vercel (framework: Other). Environment variables (all optional; features fall back gracefully without them):
 
@@ -23,3 +24,5 @@ Deploy: import this repo in Vercel (framework: Other). Environment variables (al
 | `VOICE_NAME`, `OPENAI_TTS_MODEL`, `OPENAI_TEXT_MODEL`, `OPENAI_STT_MODEL` | Optional overrides (defaults: `coral`, `gpt-4o-mini-tts`, `gpt-4o-mini`, `gpt-4o-mini-transcribe`) |
 | `RESEND_API_KEY`, `CONTACT_TO`, `CONTACT_FROM` | Emailing contact messages to the owner |
 | `CRON_SECRET` | Protects the daily voice warm-up cron |
+| `CAL_ENC_KEY` | 32 random bytes (base64) used to encrypt calendar connections; required for “When can we go?” |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | “Connect Google Calendar” (read-only free/busy scope; redirect URI `https://www.swissoutings.com/api/cal?action=google-callback`) |
