@@ -264,6 +264,11 @@ function icon(n){
     sliders:'<path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/>',
     gear:'<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>',
     phone:'<rect x="7" y="2.5" width="10" height="19" rx="2.5"/><path d="M11 18.5h2"/>',
+    route:'<circle cx="6" cy="19" r="2.5"/><circle cx="18" cy="5" r="2.5"/><path d="M8.5 19H15a3.5 3.5 0 0 0 0-7H9a3.5 3.5 0 0 1 0-7h6.5"/>',
+    star:'<path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z"/>',
+    home:'<path d="M3 11 12 4l9 7"/><path d="M5 10v10h14V10"/><path d="M10 20v-6h4v6"/>',
+    bulb:'<path d="M9 18h6M10 21h4"/><path d="M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2.1h5c0-.9.4-1.6 1-2.1A6 6 0 0 0 12 3z"/>',
+    swap:'<path d="M4 8h13l-3-3M20 16H7l3 3"/>',
     help:'<circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.4 2.3c-.6.3-.9.8-.9 1.4v.6"/><circle cx="12" cy="17" r=".6" fill="currentColor"/>'};
   const fill = n==="heart"?"currentColor":"none";
   return `<svg viewBox="0 0 24 24" fill="${fill}" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${P[n]}</svg>`;
@@ -331,7 +336,7 @@ function discoverView(){
   const [wa,wb]=weekendRange();
   const wk=list.filter(e=>overlaps(e,wa,wb) && spanDays(e)<30);
   const ongoing=list.filter(e=>isOngoing(e) && spanDays(e)>=30);
-  let h=askBar()+statusLine();
+  let h=askBar()+(window.SO_planner&&!S.askSummary?window.SO_planner.todayBanner()+window.SO_planner.ctaHTML():"")+statusLine();
   if(wk.length){ h+=sec("This weekend", wk.length, `${DOW[wa.getDay()]} ${wa.getDate()} – ${DOW[wb.getDay()]} ${wb.getDate()} ${MON[wb.getMonth()]}`)+`<div class="rail">${wk.map(cardHTML).join("")}</div>`; }
   const after=list.filter(e=>!wk.includes(e) && !ongoing.includes(e));
   const byMonth={}; after.forEach(e=>{ const s=isOngoing(e)?TODAY:evStart(e); const k=s.getFullYear()+"-"+String(s.getMonth()).padStart(2,"0"); (byMonth[k]=byMonth[k]||[]).push(e); });
@@ -374,7 +379,7 @@ function oursView(){
   const going=up.filter(e=>peopleFor(e.id).some(([u,st])=>st==="going")).sort((a,b)=>evStart(a)-evStart(b));
   const both=up.filter(e=>peopleFor(e.id).length>=2 && !going.includes(e)).sort((a,b)=>evStart(a)-evStart(b));
   const keen=up.filter(e=>peopleFor(e.id).length===1 && !going.includes(e)).sort((a,b)=>evStart(a)-evStart(b));
-  let h=statusLine();
+  let h=(window.SO_planner?window.SO_planner.tripsSection():"");
   h+=sec("We're going", going.length)+(going.length?`<div class="grid">${going.map(cardHTML).join("")}</div>`:`<div class="empty">Mark events ✓ Going and they'll collect here.</div>`);
   h+=sec("You're both keen", both.length, "time to decide")+(both.length?`<div class="grid">${both.map(cardHTML).join("")}</div>`:`<div class="empty">When you both tap ♥ Keen on the same event, it shows up here.</div>`);
   h+=sec("One of you is keen", keen.length)+(keen.length?`<div class="grid">${keen.map(cardHTML).join("")}</div>`:`<div class="empty">Nothing yet.</div>`);
@@ -438,6 +443,7 @@ function openSheet(id){
         <div class="planrow"><button class="btn when" type="button" data-act="when" data-id="${eid}">${icon("calq")} When can we go?</button>
           <div class="calwrap"><button class="btn" type="button" data-act="calmenu" data-id="${eid}" aria-expanded="false">${icon("cal")} Add to calendar</button>
             <div class="calpop" hidden><button type="button" data-act="cal" data-id="${eid}">${icon("cal")} Phone calendar</button><a href="${esc(gcalUrl(e))}" target="_blank" rel="noopener" data-track="calendar" data-id="${eid}">${icon("cal")} Google Calendar</a></div></div></div>
+        <button class="btn planaround" type="button" data-act="planaround" data-id="${eid}">${icon("route")} Build a day around this</button>
         <div id="whenPanel"></div>
       </section>
       <div id="tixPanel">${S.tixOpen===e.id?tixHTML(e):""}</div>
@@ -813,6 +819,7 @@ function openAsk(msg){
   };
 }
 async function runAsk(input){
+  if(input.text && window.SO_planner && /\b(plan|organi[sz]e)\b.*\b(day|weekend|saturday|sunday|trip|outing|today|tomorrow)\b/i.test(input.text)){ closeSheet(); const t=input.text.toLowerCase(); window.SO_planner.open({note:input.text, vibe:/hik|nature|walk|mountain|forest|lake/.test(t)?"nature":/museum|city|culture/.test(t)?"city":/rain/.test(t)?"rainy":undefined, from:"ask"}); return; }
   const live=$("#askLive"); if(live) live.innerHTML=`<span class="spin"></span> Finding events${input.text?" for “"+esc(input.text)+"”":""}…`;
   let res=null;
   try{
@@ -943,5 +950,5 @@ $("#region").addEventListener("change", e=>{ S.region=e.target.value; render(); 
 
 /* ---------- boot ---------- */
 buildFilters(); render();
-window.__app={S,render,buildFilters,parseD,isPast,poster,esc,fmtStamp,toast,isNew,openSettings,openSheet,track,flushLog,maybeShowTips,openTips,openInvite,openContact};
+window.__app={S,render,buildFilters,parseD,isPast,poster,esc,fmtStamp,toast,isNew,openSettings,openSheet,track,flushLog,maybeShowTips,openTips,openInvite,openContact,sheetShell,icon,closeSheet,authHeader,ymd,addDays,TODAY,whenText,copyPlain};
 })();

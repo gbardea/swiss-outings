@@ -625,3 +625,93 @@ details summary{cursor:pointer;font-weight:600;font-size:14px}
 }
 .native .bar .seg{padding-bottom:calc(6px + env(safe-area-inset-bottom,0px))}
 @media (max-width:720px){ .calhead{flex-wrap:nowrap;gap:6px} .calhead h2{flex:1;font-size:22px;white-space:nowrap} .calhead .iconbtn{padding:0 10px;height:36px;font-size:13px} }
+
+/* ---------- Plan our day ---------- */
+.plancta,.todaytrip{width:100%;display:grid;grid-template-columns:44px 1fr auto;gap:12px;align-items:center;text-align:left;border:0;border-radius:16px;padding:14px 16px;cursor:pointer;margin:0 0 12px;color:#fff;background:linear-gradient(120deg,#0B3D5C,#166534);box-shadow:var(--shadow)}
+.plancta>svg,.todaytrip>svg{width:44px;height:44px;padding:10px;border-radius:12px;background:rgba(255,255,255,.16)}
+.plancta span,.todaytrip span{display:flex;flex-direction:column;gap:2px;min-width:0}
+.plancta b,.todaytrip b{font-size:16.5px}
+.plancta small{opacity:.85;font-size:13px}
+.plancta>span:last-child,.todaytrip>span:last-child{font-size:22px;opacity:.8}
+.todaytrip{background:linear-gradient(120deg,#D52B1E,#B45309)}
+.todaytrip small{font:700 11px/1.3 var(--f-mono);letter-spacing:.08em;opacity:.9}
+.todaytrip>span:last-child{font-size:14px;font-weight:700}
+.planaround{justify-content:center}
+.plansetup .chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.plansetup .chips.small{font-size:13.5px;gap:14px}
+.plansetup input[type=date].chip{padding:6px 10px}
+.plansetup .twocol{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.anchor{display:flex;gap:10px;align-items:center;background:color-mix(in srgb,#FFE14D 35%,var(--surface));border-radius:12px;padding:10px 12px;font-size:14px}
+.anchor svg{width:18px;height:18px;flex:none}
+.homebox{display:flex;align-items:center;gap:10px;background:var(--surface2);border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-top:6px}
+.homebox svg{width:18px;height:18px;color:var(--muted);flex:none}.homebox span{flex:1;font-size:14.5px}
+.geo{position:relative;margin-top:4px}
+.geolist{display:flex;flex-direction:column;margin-top:6px}
+.geolist button{display:flex;align-items:center;gap:8px;text-align:left;border:0;border-bottom:1px solid var(--line);background:none;padding:10px 4px;cursor:pointer;font-size:14.5px}
+.geolist svg{width:16px;height:16px;color:var(--muted);flex:none}
+.whorow{display:flex;align-items:center;gap:10px;margin-top:8px;font-size:14.5px}
+.whorow>span:first-child{width:56px;color:var(--muted)}
+.step{width:36px;height:36px;border-radius:50%;border:1px solid var(--line);background:var(--surface);font-size:18px;cursor:pointer}
+.kids{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.kid{display:inline-flex;align-items:center;gap:6px;background:var(--surface2);border:1px solid var(--line);border-radius:999px;padding:5px 6px 5px 12px;font-weight:600;font-size:13.5px}
+.kid button{border:0;background:none;cursor:pointer;color:var(--muted);font-size:12px}
+label.tick{display:inline-flex;align-items:center;gap:6px;font:500 13.5px var(--f-body);text-transform:none;letter-spacing:0;color:var(--ink)}
+.building{display:flex;flex-direction:column;align-items:center;gap:12px;text-align:center;padding:60px 10px}
+.building p{margin:0;font-size:17px}
+.spinbig{width:54px;height:54px;border-radius:50%;border:5px solid var(--line);border-top-color:#D52B1E;animation:spin .9s linear infinite}
+.sheet.planview{display:flex;flex-direction:column}
+.sheet.planview .inner{flex:1}
+.plan2{display:flex;flex-direction:column;gap:14px;transition:opacity .2s}
+.plan2.busy{opacity:.45;pointer-events:none}
+.psum{margin:0;color:var(--muted);font-weight:600}
+.pstats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.pstats span{background:var(--surface2);border:1px solid var(--line);border-radius:12px;padding:8px 10px;display:flex;flex-direction:column}
+.pstats small{font:600 10.5px/1.3 var(--f-mono);letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.pstats b{font-size:17px;font-variant-numeric:tabular-nums}
+.pmap{height:240px;border-radius:14px;overflow:hidden;background:var(--surface2);border:1px solid var(--line)}
+.pm{width:26px;height:26px;border-radius:50%;background:#D52B1E;color:#fff;display:grid;place-items:center;font:800 13px/1 var(--f-body);border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.3)}
+.pm.home{background:#14181D}
+.ptl{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
+.pleg{display:grid;grid-template-columns:30px 1fr auto;gap:10px;align-items:start;padding:10px 0 10px 2px;color:var(--muted);font-size:14px;border-left:2px dashed var(--line);margin-left:14px;padding-left:16px}
+.pleg .lic{margin-left:-31px;width:28px;height:28px;border-radius:50%;background:var(--surface);display:grid;place-items:center;font-size:15px}
+.pleg b{color:var(--ink)}
+.pleg small{display:block;margin-top:3px;font-size:12.5px}
+.pleg .cost{font:600 12.5px var(--f-mono);white-space:nowrap}
+.pstop{display:grid;grid-template-columns:30px 1fr;gap:12px}
+.pnum span,.pnum .tick{width:30px;height:30px;border-radius:50%;background:#D52B1E;color:#fff;display:grid;place-items:center;font-weight:800;border:0;font-size:14px}
+.pnum .tick{cursor:pointer}
+.pnum .tick.on{background:var(--go)}
+.pstop.done .pbody{opacity:.55}
+.pbody{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:12px 14px;display:flex;flex-direction:column;gap:4px}
+.ptime{font:600 12.5px var(--f-mono);color:var(--muted)}
+.pbody h3{margin:0;font-family:var(--f-display);font-size:18px}
+.pbody p{margin:0;font-size:14.5px}
+.paddr{color:var(--muted);font-size:13px !important}
+.ptip{color:var(--muted);font-size:13.5px !important}
+.pfact{background:var(--surface2);border-radius:10px;padding:10px 12px;font-size:14px}
+.pfact a{font-size:13px;font-weight:600;color:var(--accent);text-decoration:none}
+.palts{display:flex;flex-direction:column;gap:6px;background:var(--surface2);border-radius:10px;padding:10px}
+.alt{display:flex;flex-direction:column;gap:2px;text-align:left;border:1px solid var(--line);background:var(--surface);border-radius:10px;padding:10px 12px;cursor:pointer}
+.alt small{color:var(--muted)}.alt span{font-size:13.5px}
+.pacts{display:flex;gap:4px;flex-wrap:wrap;align-items:center;margin-top:6px}
+.pacts button,.pacts a{display:inline-flex;align-items:center;gap:5px;border:0;background:none;color:var(--ink);font-weight:600;font-size:13px;padding:6px 8px;border-radius:8px;cursor:pointer;text-decoration:none}
+.pacts button:hover,.pacts a:hover{background:var(--surface2)}
+.pacts svg{width:15px;height:15px;color:var(--muted)}
+.pacts .sp{flex:1}
+.pacts .rm:hover{color:var(--bad)}
+.pheads{background:color-mix(in srgb,var(--warn) 10%,var(--surface));border:1px solid color-mix(in srgb,var(--warn) 35%,var(--line));border-radius:14px;padding:12px 14px;font-size:14px}
+.pheads ul{margin:6px 0 0;padding-left:18px}
+.ppack{margin:0;font-size:14px;color:var(--muted)}
+.nownext{border-radius:14px;padding:14px;background:color-mix(in srgb,var(--go) 12%,var(--surface));border:1px solid color-mix(in srgb,var(--go) 40%,var(--line));display:flex;flex-direction:column;gap:6px}
+.nownext small{font:700 11px var(--f-mono);letter-spacing:.08em;color:var(--go)}
+.nownext b{font-size:17px}
+.pbar .calpop.up{top:auto;bottom:calc(100% + 8px);left:0}
+.trips{display:flex;flex-direction:column;gap:8px}
+.tripcard{display:grid;grid-template-columns:54px 1fr auto;gap:12px;align-items:center;text-align:left;border:1px solid var(--line);background:var(--surface);border-radius:14px;padding:10px 14px;cursor:pointer}
+.tripcard .tday{display:flex;flex-direction:column;align-items:center;background:#D52B1E;color:#fff;border-radius:10px;padding:6px 0;font:600 11px var(--f-mono);text-transform:uppercase}
+.tripcard .tday b{font:900 20px/1 var(--f-display)}
+.tripcard .tbody{display:flex;flex-direction:column}
+.tripcard small{color:var(--muted)}
+.tripcard.new{grid-template-columns:40px 1fr;border-style:dashed}
+.tripcard.new svg{width:24px;height:24px;color:var(--accent);margin:auto}
+@media (max-width:520px){.pstats{grid-template-columns:repeat(2,1fr)}.plansetup .twocol{grid-template-columns:1fr}}

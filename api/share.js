@@ -25,7 +25,36 @@ function page(title, desc, url, body){
 <body><main><a class="brand" href="/"><span class="x"><svg width="14" height="14" viewBox="0 0 12 12"><path d="M4.5 1h3v3.5H11v3H7.5V11h-3V7.5H1v-3h3.5z" fill="#fff"/></svg></span>Swiss Outings</a>${body}</main></body></html>`;
 }
 
+async function tripPage(req, res) {
+  const tok = String(req.query.trip || "");
+  res.setHeader("Content-Type", "text/html; charset=utf-8");
+  let t = null;
+  if (/^[a-f0-9]{24,64}$/.test(tok)) {
+    try { const r = await fetch(`${URL_}/rest/v1/rpc/trip_public`, { method: "POST", headers: { apikey: KEY, Authorization: `Bearer ${KEY}`, "Content-Type": "application/json" }, body: JSON.stringify({ p_token: tok }), signal: AbortSignal.timeout(5000) }); if (r.ok) t = await r.json(); } catch (x) {}
+  }
+  if (!t || !t.plan) { res.setHeader("Cache-Control", "public, s-maxage=60"); res.status(404).send(page("Trip not found", "", SITE, `<div class="card"><h1>This trip isn't available</h1><p class="meta">The link may be wrong, or the plan was deleted.</p><div class="btns"><a class="btn p" href="/">Discover Swiss Outings</a></div></div>`)); return; }
+  const p = t.plan, url = `${SITE}/t/${tok}`;
+  const d = new Date(t.day + "T12:00:00Z"), dayTxt = d.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", timeZone: "UTC" });
+  const desc = [dayTxt, (p.stops || []).map(s => s.name).join(" → ")].join(" · ").slice(0, 280);
+  const items = [];
+  (p.stops || []).forEach((s, i) => { const l = (p.legs || [])[i]; if (l) items.push(`<li class="leg">${l.mode === "walk" ? "🚶" : l.mode === "car" ? "🚗" : "🚆"} <b>${esc(l.depart)}</b> ${esc(l.text)}</li>`);
+    items.push(`<li class="stop" data-i="${i}"><span class="n">${i + 1}</span><div><b>${esc(s.arrive)}–${esc(s.leave)} · ${esc(s.name)}</b><br><span class="meta">${esc(s.address || s.town || "")}</span>${s.why ? `<p>${esc(s.why)}</p>` : ""}${s.tip ? `<p class="meta">💡 ${esc(s.tip)}</p>` : ""}${s.opening_note ? `<p class="meta">🕒 ${esc(s.opening_note)}</p>` : ""}<a class="meta" target="_blank" rel="noopener" href="https://www.google.com/maps/dir/?api=1&destination=${s.lat},${s.lon}">Directions ›</a></div></li>`); });
+  const lastLeg = (p.legs || [])[(p.stops || []).length]; if (lastLeg) items.push(`<li class="leg">🏠 <b>${esc(lastLeg.depart)}</b> ${esc(lastLeg.text)} · home ${esc(lastLeg.arrive)}</li>`);
+  const pts = (p.stops || []).map(s => [s.lat, s.lon]);
+  const body = `<article class="card"><h1>${esc(p.title || t.title)}</h1><p class="meta">${esc(dayTxt)}${p.weather ? ` · ${esc(p.weather.icon)} ${esc(p.weather.text)}, ${p.weather.min}–${p.weather.max}°` : ""}</p>
+    <p class="meta">Leave ${esc(p.leaveHome || "")} · back ${esc(p.backHome || "")} · about CHF ${esc(p.costChf || 0)}</p>${p.summary ? `<p class="lede">${esc(p.summary)}</p>` : ""}
+    <div id="map" style="height:260px;border-radius:12px;margin:12px 0;background:#dde"></div>
+    <ol class="tl">${items.join("")}</ol>${(p.headsUp || []).length ? `<div class="heads"><b>Good to know</b><ul>${p.headsUp.map(h => `<li>${esc(h)}</li>`).join("")}</ul></div>` : ""}</article>
+    <section class="join"><b>Plan your own day out</b><p>Swiss Outings plans family days across Switzerland, with trains, food and the best events. Free.</p><a class="btn p" style="display:block" href="/">Open Swiss Outings</a></section>
+    <style>.tl{list-style:none;padding:0;margin:0}.tl li{padding:10px 0;border-bottom:1px solid var(--line)}.tl .stop{display:grid;grid-template-columns:30px 1fr;gap:10px}.tl .n{width:26px;height:26px;border-radius:50%;background:#D52B1E;color:#fff;display:grid;place-items:center;font-weight:800;font-size:13px}.tl .leg{color:var(--mu);font-size:14px}.tl p{margin:4px 0}.heads{margin-top:14px;background:var(--bg);border-radius:12px;padding:10px 14px}.heads ul{margin:6px 0 0;padding-left:18px}</style>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"><script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+    <script>(function(){var P=${JSON.stringify(pts)};if(!window.L||!P.length)return;var m=L.map("map",{scrollWheelZoom:false});L.tileLayer("https://wmts.geo.admin.ch/1.0.0/ch.swisstopo.pixelkarte-farbe/default/current/3857/{z}/{x}/{y}.jpeg",{attribution:"© swisstopo",maxZoom:18}).addTo(m);P.forEach(function(p,i){L.marker(p,{icon:L.divIcon({className:"",html:'<div style="width:26px;height:26px;border-radius:50%;background:#D52B1E;color:#fff;display:grid;place-items:center;font:800 13px system-ui;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.3)">'+(i+1)+"</div>",iconSize:[26,26],iconAnchor:[13,13]})}).addTo(m)});L.polyline(P,{color:"#D52B1E",weight:3,dashArray:"6 6"}).addTo(m);m.fitBounds(P,{padding:[30,30]});setTimeout(function(){location.reload()},120000)})();</script>`;
+  res.setHeader("Cache-Control", "public, max-age=30, s-maxage=30");
+  res.status(200).send(page(p.title || t.title, desc, url, body));
+}
+
 module.exports = async (req, res) => {
+  if (req.query && req.query.trip) return tripPage(req, res);
   const id = String((req.query && req.query.id) || "");
   res.setHeader("Content-Type", "text/html; charset=utf-8");
   if (!/^[A-Za-z0-9_.~:@+-]{1,200}$/.test(id)) { res.status(404).send(page("Event not found", "", SITE, `<div class="card"><h1>Event not found</h1><p><a href="/">See what's on</a></p></div>`)); return; }

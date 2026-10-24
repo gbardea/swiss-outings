@@ -22,6 +22,7 @@ globalThis.fetch = async (url, opts) => { // server-side calls from api/* to Sup
   const u = String(url);
   if (u.startsWith(SB + "/rest/v1/events")) { const id = decodeURIComponent((u.match(/id=eq\.([^&]+)/) || [])[1] || ""); const e = EVENTS.find(x => x.id === id); return new Response(JSON.stringify(e ? [{ data: e }] : []), { status: 200, headers: { "content-type": "application/json" } }); }
   if (u.startsWith(SB + "/auth/v1/user")) return new Response("{}", { status: 200 });
+  if (u.startsWith(SB + "/rest/v1/rpc/trip_public")) { const tok = JSON.parse(opts.body).p_token; const t = DB.trips.find(x => x.share_token === tok); return new Response(JSON.stringify(t ? { title: t.title, day: t.day, done: t.done, plan: Object.assign({}, t.plan, { start: undefined, who: undefined, params: undefined }) } : null), { status: 200 }); }
   throw new Error("blocked " + u);
 };
 const TYPES = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".json": "application/json", ".png": "image/png", ".webmanifest": "application/manifest+json" };
@@ -29,6 +30,7 @@ const server = http.createServer(async (req, res) => {
   const u = new URL(req.url, "http://x");
   let p = u.pathname;
   const m = p.match(/^\/e\/(.+)$/); if (m) p = "/api/share", u.searchParams.set("id", decodeURIComponent(m[1]));
+  const mt = p.match(/^\/t\/(.+)$/); if (mt) p = "/api/share", u.searchParams.set("trip", decodeURIComponent(mt[1]));
   if (p.startsWith("/api/")) {
     const fn = require(path.join(ROOT, p + ".js"));
     let body = ""; for await (const c of req) body += c;
@@ -47,7 +49,14 @@ await new Promise(r => server.listen(0, r));
 const BASE = "http://localhost:" + server.address().port;
 
 /* ---------- fake Supabase in the browser ---------- */
-function rest(table, method, url) {
+const DB = { trips: [], settings: null };
+function rest(table, method, url, body) {
+  if (table === "household_settings") { if (method === "POST") { DB.settings = Object.assign({}, DB.settings, body); return null; } return DB.settings; }
+  if (table === "trips") {
+    if (method === "POST") { const t = Object.assign({ id: "trip-" + (DB.trips.length + 1), share_token: "a".repeat(31) + (DB.trips.length + 1), done: [] }, body); DB.trips.push(t); return t; }
+    if (method === "PATCH") { const id = (url.match(/id=eq\.([^&]+)/) || [])[1]; const t = DB.trips.find(x => x.id === decodeURIComponent(id || "")); if (t) Object.assign(t, body); return null; }
+    return DB.trips;
+  }
   const memberRow = { user_id: UID, household_id: HH, display_name: "Gal", is_admin: SCENARIO === "admin" };
   if (table === "events") return EVENTS.map(e => ({ id: e.id, data: e, first_seen: iso(today) }));
   if (table === "members") { if (SCENARIO === "newuser") return url.includes("user_id=eq") && /maybeSingle|limit/.test(url) ? null : []; return url.includes("user_id=eq.") && !url.includes("household_id") ? memberRow : [memberRow]; }
@@ -76,7 +85,7 @@ async function fakeSupabase(page) {
     const rpc = url.match(/\/rest\/v1\/rpc\/(\w+)/);
     if (rpc) { calls.push({ rpc: rpc[1], body }); const f = RPC[rpc[1]]; return route.fulfill({ status: f ? 200 : 404, contentType: "application/json", body: JSON.stringify(f ? f(body) : { message: "no such rpc" }) }); }
     const t = url.match(/\/rest\/v1\/(\w+)/);
-    if (t) { calls.push({ table: t[1], method, url }); const accept = r.headers()["accept"] || ""; let data = rest(t[1], method, url); if (accept.includes("vnd.pgrst.object") && Array.isArray(data)) data = data[0] ?? null; return route.fulfill({ status: data === null && accept.includes("vnd.pgrst.object") ? 406 : 200, contentType: "application/json", body: JSON.stringify(data ?? []) }); }
+    if (t) { calls.push({ table: t[1], method, url }); const accept = r.headers()["accept"] || ""; let data = rest(t[1], method, url, body); if (accept.includes("vnd.pgrst.object") && Array.isArray(data)) data = data[0] ?? null; return route.fulfill({ status: data === null && accept.includes("vnd.pgrst.object") ? 406 : 200, contentType: "application/json", body: JSON.stringify(data ?? []) }); }
     return route.fulfill({ status: 200, contentType: "application/json", body: "{}" });
   });
   const session = { access_token: "aaa.bbb.ccc", refresh_token: "r", token_type: "bearer", expires_in: 3600, expires_at: Math.floor(Date.now() / 1000) + 3600, user: { id: UID, email: "g@example.com", aud: "authenticated", role: "authenticated" } };
@@ -99,9 +108,9 @@ async function newPage(scenario, opts = {}) {
   const page = await ctx.newPage();
   page.on("pageerror", e => errors.push(scenario + ": " + e.message));
   page.on("console", m => { if (m.type() === "error" && !/Failed to load resource|WebSocket|net::ERR|fonts\.g|fetching the script/.test(m.text())) errors.push(scenario + " console: " + m.text()); });
-  await page.route(/fonts\.(googleapis|gstatic)\.com|cdnjs\.cloudflare\.com/, r => r.fulfill({ status: 200, body: "" }));
+  await page.route(/fonts\.(googleapis|gstatic)\.com|cdnjs\.cloudflare\.com\/ajax\/libs\/qrcode/, r => r.fulfill({ status: 200, body: "" }));
   await fakeSupabase(page);
   return page;
 }
 
-export { ROOT, BASE, EVENTS, calls, errors, browser, server, newPage };
+export { ROOT, BASE, EVENTS, calls, errors, browser, server, newPage, DB };

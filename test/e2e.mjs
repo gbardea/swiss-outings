@@ -1,7 +1,7 @@
 // End-to-end UI test: clicks through the app against a local server with a fake Supabase (see harness.mjs).
 // Run: node test/e2e.mjs   (needs Playwright + Chromium; no network needed)
 import path from "node:path";
-import { ROOT, BASE, EVENTS, calls, errors, browser, server, newPage } from "./harness.mjs";
+import { ROOT, BASE, EVENTS, calls, errors, browser, server, newPage, DB } from "./harness.mjs";
 const results = [];
 async function check(name, fn) { try { await fn(); results.push(["PASS", name]); } catch (e) { results.push(["FAIL", name, String(e.message || e).split("\n")[0]]); } }
 const assert = (c, m) => { if (!c) throw new Error(m || "assertion failed"); };
@@ -49,6 +49,45 @@ await check("event page has a 'When can we go?' button", async () => { await pag
 await check("no calendar yet → offers to connect, with iPhone steps", async () => { await page.click('.sheet [data-act="when"]'); await page.waitForSelector('#whenPanel [data-act="calconnect"]'); await page.click('#whenPanel [data-act="calconnect"]'); await page.waitForSelector("#icsForm"); const t = await page.textContent("#sheetHost"); assert(/Public Calendar/.test(t) && /Google Calendar/.test(t) && /never stores/.test(t)); await page.click('#sheetHost .iconbtn[data-close]'); });
 await check("with calendars → best date, alternatives and clashes; Book it adds that date", async () => { calMode = "ok"; await page.evaluate(id => window.__app.openSheet(id), EVENTS[3].id); await page.click('.sheet [data-act="when"]'); await page.waitForSelector(".whenbest"); const t = await page.textContent("#whenPanel"); assert(/Sat 14 Nov/.test(t) && /both free/.test(t) && /Sun 15 Nov/.test(t) && /Corie busy/.test(t), t); await page.click('.whenbest [data-act="bookon"]'); await page.waitForTimeout(600); assert(icsHits.some(u => u.includes("on=2026-11-14")), icsHits.join(",")); });
 await page.context().close();
+
+// 1c. "Plan our day"
+{
+  const day = new Date(Date.now() + 2 * 864e5).toISOString().slice(0, 10);
+  const stop = (n, name, arrive, leave, extra = {}) => Object.assign({ type: "activity", name, town: "Rapperswil", lat: 47.226 + n / 100, lon: 8.817, address: name + ", 8640 Rapperswil", arrive, leave, duration_min: 90, cost_chf: 20, why: "Lovely spot for the kids.", tip: "Go early.", wiki_title: "Rapperswil" }, extra);
+  const PLAN = { title: "Rapperswil roses & zoo", summary: "Animals, castle and lake.", day, start: { lat: 47.318, lon: 8.583, label: "Seestrasse 10, 8700 Küsnacht" }, params: { vibe: "mix" }, travel: "train", who: { adults: 2, kids: [9, 6] },
+    weather: { icon: "☀️", text: "Sunny", min: 6, max: 14, rain: 10 },
+    stops: [stop(0, "Knie's Kinderzoo", "09:30", "12:00"), stop(1, "Café Rosenstadt", "12:15", "13:15", { type: "meal" }), stop(2, "Rapperswil Castle", "13:30", "15:00")],
+    legs: [{ mode: "train", depart: "08:52", arrive: "09:25", minutes: 33, text: "S7 09:02 from Küsnacht ZH, platform 2 → Rapperswil 09:21", costChf: 24 }, { mode: "walk", depart: "12:00", arrive: "12:10", minutes: 10, text: "Walk 10 min" }, { mode: "walk", depart: "13:15", arrive: "13:25", minutes: 10, text: "Walk 10 min" }, { mode: "train", depart: "15:05", arrive: "15:40", minutes: 35, text: "S7 15:12 from Rapperswil → Küsnacht ZH 15:36", costChf: 24 }],
+    leaveHome: "08:52", backHome: "15:40", travelMin: 88, costChf: 108, headsUp: ["Zoo closes at 17:00."], packing: ["Snacks"] };
+  page = await newPage("member", { mobile: true });
+  await page.addInitScript(() => localStorage.setItem("so.tipsSeen", "1"));
+  const planCalls = [];
+  await page.route("**/api/plan?action=geocode**", r => r.fulfill({ contentType: "application/json", body: JSON.stringify({ results: [{ label: "Seestrasse 10, 8700 Küsnacht", lat: 47.318, lon: 8.583 }] }) }));
+  await page.route("**/api/plan?action=fact**", r => r.fulfill({ contentType: "application/json", body: JSON.stringify({ title: "Rapperswil", text: "Rapperswil is known as the town of roses.", url: "https://en.wikipedia.org/wiki/Rapperswil" }) }));
+  await page.route(/\/api\/plan\?action=(build|reflow|alternatives)/, async r => { const a = new URL(r.request().url()).searchParams.get("action"), b = JSON.parse(r.request().postData() || "{}"); planCalls.push({ a, b });
+    if (a === "build") return r.fulfill({ contentType: "application/json", body: JSON.stringify({ plan: PLAN }) });
+    if (a === "alternatives") return r.fulfill({ contentType: "application/json", body: JSON.stringify({ options: [stop(5, "Chocolate workshop", "13:30", "15:00"), stop(6, "Lake boat ride", "13:30", "15:00")] }) });
+    return r.fulfill({ contentType: "application/json", body: JSON.stringify({ plan: Object.assign({}, b.plan, { stops: b.plan.stops, legs: PLAN.legs.slice(0, b.plan.stops.length + 1) }) }) }); });
+  await page.route(/cdnjs\.cloudflare\.com.*leaflet/, r => r.fulfill({ status: 200, contentType: "text/javascript", body: "" }));
+  await page.goto(BASE + "/"); await page.waitForSelector(".card");
+  await check("Discover shows the 'Plan our day' card", async () => { assert(await page.isVisible(".plancta")); });
+  await check("first plan asks for the home address (private) and finds it", async () => { await page.click(".plancta"); await page.waitForSelector("#homeQ"); assert(/stays private/.test(await page.textContent("#planForm"))); await page.fill("#homeQ", "Seestrasse 10 Küsnacht"); await page.waitForSelector("#homeList [data-geo]"); await page.click("#homeList [data-geo]"); await page.waitForSelector(".homebox"); });
+  await check("setup: who's coming, vibe, then Make our plan", async () => { await page.selectOption("#kidAdd", "9"); await page.selectOption("#kidAdd", "6"); await page.click('[data-vibe="nature"]'); await page.click('#planForm button[type=submit]'); await page.waitForSelector(".plan2", { timeout: 8000 });
+    const b = planCalls.find(c => c.a === "build").b.params; assert(b.start.label.includes("Küsnacht") && b.who.kids.join() === "9,6" && b.vibe === "nature", JSON.stringify(b)); assert(DB.settings && DB.settings.home_label.includes("Seestrasse"), "home saved for next time"); });
+  await check("plan shows stats, map, trains, stops and heads-up", async () => { const t = await page.textContent(".plan2"); assert(/08:52/.test(t) && /S7 09:02/.test(t) && /Kinderzoo/.test(t) && /Zoo closes/.test(t) && /CHF 108/.test(t), t.slice(0, 200)); assert(await page.isVisible("#planMap")); });
+  await check("fun facts load from Wikipedia", async () => { await page.click('[data-fact="0"]'); await page.waitForSelector("#fact0:not([hidden]) >> text=town of roses"); });
+  await check("✕ removes a stop and re-plans the times", async () => { await page.click('[data-rm="1"]'); await page.waitForFunction(() => !document.querySelector(".plan2.busy") && document.querySelectorAll(".pstop").length === 2); const r = planCalls.filter(c => c.a === "reflow").pop(); assert(r && r.b.plan.stops.length === 2 && !r.b.plan.stops.some(s => s.name === "Café Rosenstadt")); });
+  await check("↻ offers alternatives and swaps one in", async () => { await page.click('[data-swap="1"]'); await page.waitForSelector("[data-usealt]"); await page.click('[data-usealt="1:0"]'); await page.waitForSelector("text=Chocolate workshop"); });
+  await check("Save puts the trip in Plans; Send shares a /t/ link by WhatsApp", async () => { await page.click("[data-psave]"); await page.waitForSelector("[data-psave][disabled]"); assert(DB.trips.length === 1); await page.click("[data-psend]"); await page.click('[data-psendvia="wa"]'); const o = await page.evaluate(() => window.__opened.slice(-1)[0] || ""); assert(/wa\.me/.test(o) && decodeURIComponent(o).includes("/t/" + DB.trips[0].share_token), o); });
+  await check("Plans tab lists the saved trip and reopens it", async () => { await page.click("#sheetHost .iconbtn[data-close]"); await page.click('.seg [data-view="ours"]'); await page.waitForSelector(".tripcard[data-trip]"); await page.click(".tripcard[data-trip]"); await page.waitForSelector(".plan2 .tick"); });
+  await check("event page offers 'Build a day around this'", async () => { await page.click("#sheetHost .iconbtn[data-close]"); await page.evaluate(id => window.__app.openSheet(id), EVENTS[4].id); await page.click('[data-act="planaround"]'); await page.waitForSelector(".anchor"); assert((await page.textContent(".anchor")).includes(EVENTS[4].title)); });
+  await check("typed 'plan us a hiking day' opens the planner", async () => { await page.click("#sheetHost .iconbtn[data-close]"); await page.click('.seg [data-view="discover"]'); await page.click("[data-ask-open]"); await page.fill("#askText", "plan us a hiking day on Sunday"); await page.click('#askForm button[type=submit]'); await page.waitForSelector('#planForm [data-vibe="nature"][aria-pressed="true"]'); });
+  await page.context().close();
+  page = await newPage("member");
+  const tp = await page.goto(BASE + "/t/" + DB.trips[0].share_token);
+  await check("shared trip page works without login and hides the home address", async () => { assert(tp.status() === 200); const t = await page.textContent("body"); assert(/Chocolate workshop/.test(t) && !/Seestrasse/.test(t), t.slice(0, 200)); });
+  await page.context().close();
+}
 
 // 2. Brand-new user arriving from a friend's invite link
 page = await newPage("newuser", { mobile: true });

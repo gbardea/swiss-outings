@@ -273,7 +273,7 @@ async function start(){
   try{
     await Promise.all([loadEvents(), loadConfig()]);
     await adminImports();
-    await Promise.all([loadPicks(), loadHidden()]);
+    await Promise.all([loadPicks(), loadHidden(), window.SO_planner ? window.SO_planner.loadTrips() : null]);
   }catch(e){ console.error(e); if(!S.events.length){ S.dbFailed=true; } }
   S.loaded = true;
   setSubline();

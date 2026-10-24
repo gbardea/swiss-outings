@@ -11,6 +11,7 @@ Family & friends event planner for Switzerland (Zurich first). Static PWA + Supa
 - `api/ask.js` – voice / plain-words search → filters (signed-in users only)
 - `api/share.js` – public page for shared links `/e/<id>` with a WhatsApp/iMessage preview card
 - `api/cal.js` + `lib/calendar.js` – “When can we go?”: checks the household's connected calendars (Google free/busy or a private iCloud/Outlook/Google link) and suggests dates; only encrypted connections are stored, never appointments
+- `api/plan.js` + `lib/planner.js` + `public/planner.js` – “Plan our day”: family setup (home address kept private per household), AI itinerary checked against the official Swiss timetable (transport.opendata.ch), swisstopo map, Open-Meteo weather, Wikipedia fun facts, ✕/↻ edits with re-timing, saved trips and a public `/t/<token>` trip page (no home address or family details)
 - `api/contact.js` – emails contact messages / venue suggestions to the owner (they are also stored in the admin inbox)
 - `public/admin.html` – admin dashboard (users, activity, events, messages, households); data only via `admin_*` functions that refuse non-admins
 
