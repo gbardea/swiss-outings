@@ -72,15 +72,25 @@ const screens = {
         ${p.invite||p.join?`<p class="ob-invited">🎉 You've been invited</p>`:""}
         <p class="ob-lead">Concerts, carnivals, cow parades and village gigs across Switzerland, found for you every morning. Free.</p>
         <ul class="ob-points">
-          <li><b>${(previewEvents||[]).filter(e=>!A.isPast(e)).length||"250+"}</b> upcoming events, big and small</li>
+          ${cov?`<li><b>${cov.events.toLocaleString("en-US").replace(/,/g,"’")}</b> upcoming events at <b>${cov.venues}</b> venues in ${cov.towns} towns and villages</li>
+          <li><b>${cov.sources}</b> event pages read every night, so new finds arrive every morning</li>`:`<li><b>Hundreds</b> of upcoming events, big and small, updated every morning</li>`}
           <li>Plan together: <b>♥ keen</b> and <b>✓ going</b> are shared with your partner</li>
           <li>Tickets, prices and calendar invites in one tap</li>
         </ul>
+        <button class="ob-how" type="button" data-go="story">How it works and what we cover ›</button>
         <button class="btn primary ob-cta" type="button" data-go="signup">Get started</button>
         <button class="btn ob-ghost" type="button" data-go="signin">I already have an account</button>
       </div></div>`;
+    let cov = null;
     gate(html());
-    if(!previewEvents){ await loadPreview(); if(!$("#gate").hidden && $(".ob-welcome")) gate(html()); }
+    const [, c] = await Promise.all([previewEvents ? null : loadPreview(), window.SO_story ? window.SO_story.load() : null]);
+    cov = c || null;
+    if(!$("#gate").hidden && $(".ob-welcome")) gate(html());
+  },
+  async story(){
+    if(window.SO_story) await window.SO_story.load();
+    gate(card(`${window.SO_story ? window.SO_story.html({gate:true}) : ""}<button class="btn primary ob-cta" type="button" data-go="signup">Get started</button>`, { back: "welcome", wide: true }));
+    A.track && A.track("story", null, {from:"welcome"});
   },
 
   signup(m){
@@ -252,6 +262,7 @@ function realtime(){
 
 /* ---------- start ---------- */
 async function start(){
+  if(window.SO_story) window.SO_story.load();
   if(params.get("reset")){ const {data}=await sb.auth.getSession(); if(data.session) return screens.newPassword(); }
   const { data:{ session } } = await sb.auth.getSession();
   if(!session){

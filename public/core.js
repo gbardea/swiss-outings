@@ -321,7 +321,7 @@ function render(){
 }
 function statusLine(){
   const m=S.meta||{}; const up=S.events.filter(e=>!isPast(e)); const nw=up.filter(isNew).length;
-  return `<div class="status-line"><span><b>${up.length}</b> upcoming · updated ${esc(m.lastRun?fmtStamp(m.lastRun):"—")}</span>${nw?`<button type="button" class="newchip" data-tg="newonly" aria-pressed="${S.toggles.has("newonly")}">✦ ${nw} new this week</button>`:""}</div>${window.SO_install?window.SO_install.bannerHTML():""}`;
+  return `<div class="status-line"><button type="button" class="st-link" data-story="status"><b>${up.length}</b> upcoming · updated ${esc(m.lastRun?fmtStamp(m.lastRun):"—")} <u>How it works</u></button>${nw?`<button type="button" class="newchip" data-tg="newonly" aria-pressed="${S.toggles.has("newonly")}">✦ ${nw} new this week</button>`:""}</div>${window.SO_install?window.SO_install.bannerHTML():""}`;
 }
 function fmtStamp(s){ const d=new Date(s); if(isNaN(d)) return s; const k=Math.round((dayOnly(d)-dayOnly(new Date()))/864e5); const day=k===0?"today":k===-1?"yesterday":DOW[d.getDay()]+" "+d.getDate()+" "+MON[d.getMonth()]; return day+" "+hhmm(d); }
 function weekendRange(){
@@ -615,6 +615,7 @@ function openMenu(){
   const me=S.members[S.uid]||{}, IG=window.SO_install;
   const row=(attrs, ic, t, sub)=>`<button class="ig-row" type="button" ${attrs}><span class="rowic">${icon(ic)}</span><span><b>${t}</b><small>${sub}</small></span><span aria-hidden="true">›</span></button>`;
   sheetShell(me.display_name?("Hi "+me.display_name):"Menu", `<div class="setrows">
+    ${row('data-story="menu"',"pin","How it works","What we cover and how often we update")}
     ${row("data-open-settings","gear","Settings","Household, partner, friends, calendar, account")}
     ${row("data-invite-open","users","Invite people","Send a link by WhatsApp or email")}
     ${row("data-tips-open","phone",IG&&IG.isStandalone()?"Help":"Install the app &amp; help","Put Swiss Outings on your home screen")}
@@ -707,7 +708,10 @@ function openContact(kind, msg){
 /* ---------- "an app is coming" + home screen tips ---------- */
 function openTips(){
   const IG=window.SO_install;
+  const T=window.SO_story?window.SO_story.teaser():null;
   sheetShell("Welcome to Swiss Outings", `
+    ${T?`<section class="tipcard"><h3>🌙 What to expect</h3><p>Every night we read ${T.sources} event pages across Switzerland. Right now that's <b>${T.events}</b> upcoming events at <b>${T.venues}</b> venues in ${T.towns} towns, most of them small finds you won't see on a billboard. New ones arrive every morning.</p>
+      <button class="btn" type="button" data-story="tips">See how it works</button></section>`:""}
     <section class="tipcard"><h3>📱 A proper app is on its way</h3><p>We're building Swiss Outings for the App Store and Google Play. Until then, put it on your home screen: it opens full-screen and feels just like an app.</p>
       ${IG&&!IG.isStandalone()?IG.stepsHTML():`<p class="note">You're already using it from your home screen. 👍</p>`}</section>
     <section class="tipcard"><h3>📍 Missing a place you love?</h3><p>Tell us which venues, villages, clubs or websites to cover, and we'll check them every morning.</p>

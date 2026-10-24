@@ -67,6 +67,7 @@ function rest(table, method, url, body) {
   return [];
 }
 const RPC = {
+  coverage: () => ({ events: 1706, venues: 827, towns: 270, new7: 297, free: 308, gems: 1368, kids: 845, months: 13, categories: { Music: 753, Kids: 173, Outdoors: 124 }, regions: { "Zurich City": 777, "Gold Coast": 88, "Canton Zurich": 279, "Switzerland": 562 }, tags: { village: 275, nature: 147, wildlife: 73, stargazing: 18, "guided hike": 49, "hands-on": 146, "small venue": 780 }, sources: 343, sourceGroups: { zurich: 132, nature: 101, niche: 110 }, lastRun: new Date().toISOString(), lastAdded: "19", samples: [{ id: EVENTS[1].id, title: EVENTS[1].title, city: "Zurich", start: EVENTS[1].start, category: "Music" }] }),
   my_codes: () => [{ join_code: "JOINCODE", friend_code: "FRNDCODE" }],
   friend_picks: () => [], log_activity: b => (b.p || []).length, submit_message: () => 42, i_am_admin: () => SCENARIO === "admin",
   create_household: () => HH, join_household: () => null, delete_my_account: () => null,
@@ -90,12 +91,12 @@ async function fakeSupabase(page) {
   });
   const session = { access_token: "aaa.bbb.ccc", refresh_token: "r", token_type: "bearer", expires_in: 3600, expires_at: Math.floor(Date.now() / 1000) + 3600, user: { id: UID, email: "g@example.com", aud: "authenticated", role: "authenticated" } };
   await page.addInitScript(([s]) => {
-    localStorage.setItem("sb-vwqtpffnsfyazyezfcdt-auth-token", s);
+    if (s) localStorage.setItem("sb-vwqtpffnsfyazyezfcdt-auth-token", s);
     window.__opened = []; window.open = (u) => { window.__opened.push(String(u)); return null; };
     window.__spoken = []; const ss = { speak(u){ window.__spoken.push(u.text); setTimeout(()=>u.onstart&&u.onstart(), 30); }, cancel(){}, getVoices(){ return []; } };
     Object.defineProperty(window, "speechSynthesis", { value: ss, configurable: true }); window.SpeechSynthesisUtterance = class { constructor(t){ this.text=t; } };
     window.WebSocket = class { constructor() { } close() { } send() { } addEventListener() { } };
-  }, [JSON.stringify(session)]);
+  }, [SCENARIO === "guest" ? "" : JSON.stringify(session)]);
 }
 
 /* ---------- browser pages ---------- */
