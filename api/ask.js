@@ -1,7 +1,8 @@
 // Voice / plain-words search: turns "something for the kids this weekend near Zurich, not too pricey"
-// into the app's filters. POST JSON {text} or {audio: base64, mime}. Needs OPENAI_API_KEY; without it
+// into the app's filters. POST JSON {text} or {audio: base64, mime}. Needs ANTHROPIC_API_KEY (Claude) or OPENAI_API_KEY; recorded audio needs OPENAI_API_KEY. Without a key it
 // returns 501 and the app falls back to its built-in keyword parser.
 const OPENAI = "https://api.openai.com/v1";
+const LLM = require("../lib/llm");
 const SB = "https://vwqtpffnsfyazyezfcdt.supabase.co";
 const SB_KEY = "sb_publishable_CjjnuiiC3NX0OIlj2fyS2A_NyJ177I4";
 // Only signed-in users can use the AI search (keeps costs bounded).
@@ -10,7 +11,6 @@ async function signedIn(req) {
   if (!/^Bearer [\w-]+\.[\w-]+\.[\w-]+$/.test(h)) return false;
   try { const r = await fetch(`${SB}/auth/v1/user`, { headers: { apikey: SB_KEY, Authorization: h }, signal: AbortSignal.timeout(4000) }); return r.ok; } catch (e) { return false; }
 }
-const TEXT_MODEL = process.env.OPENAI_TEXT_MODEL || "gpt-4o-mini";
 const STT_MODEL = process.env.OPENAI_STT_MODEL || "gpt-4o-mini-transcribe";
 const CATS = ["Music","Festival","Kids","Culture","Film","Outdoors","Sport","Food","Seasonal","Community"];
 const TOGGLES = ["free","gem","big","english","outdoor","newonly","hot","small","cheap"];
@@ -46,16 +46,8 @@ async function transcribe(b64, mime, key) {
   const j = await r.json();
   return String(j.text || "").trim();
 }
-async function parse(text, key) {
-  const r = await fetch(`${OPENAI}/chat/completions`, {
-    method: "POST", signal: AbortSignal.timeout(12000),
-    headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ model: TEXT_MODEL, temperature: 0, max_tokens: 300, response_format: { type: "json_object" },
-      messages: [{ role: "system", content: SYSTEM(zurichToday()) }, { role: "user", content: text.slice(0, 600) }] })
-  });
-  if (!r.ok) throw new Error("parse " + r.status);
-  const j = await r.json();
-  return clean(JSON.parse(j.choices[0].message.content || "{}"));
+async function parse(text) { // Claude when ANTHROPIC_API_KEY is set, otherwise OpenAI (see lib/llm.js)
+  return clean(await LLM.complete({ system: SYSTEM(zurichToday()), user: text.slice(0, 600), json: true, tier: "fast", temperature: 0, maxTokens: 400, timeoutMs: 15000 }));
 }
 // Never trust model output blindly: keep only known values.
 function clean(f) {
@@ -75,16 +67,16 @@ function clean(f) {
 module.exports = async (req, res) => {
   res.setHeader("Cache-Control", "no-store");
   if (req.method !== "POST") { res.status(405).json({ error: "POST only" }); return; }
-  const key = process.env.OPENAI_API_KEY;
-  if (!key) { res.status(501).json({ error: "no ai" }); return; }
+  const key = process.env.OPENAI_API_KEY; // only needed to transcribe recorded audio
+  if (!LLM.available()) { res.status(501).json({ error: "no ai" }); return; }
   if (!(await signedIn(req))) { res.status(401).json({ error: "Please sign in." }); return; }
   let body = req.body; if (typeof body === "string") { try { body = JSON.parse(body); } catch (e) { body = {}; } }
   body = body || {};
   try {
     let text = String(body.text || "").trim();
-    if (!text && body.audio) text = await transcribe(String(body.audio), String(body.mime || ""), key);
+    if (!text && body.audio) { if (!key) { res.status(501).json({ error: "no transcription" }); return; } text = await transcribe(String(body.audio), String(body.mime || ""), key); }
     if (!text) { res.status(400).json({ error: "Didn't catch that. Try again?" }); return; }
-    const filters = await parse(text, key);
+    const filters = await parse(text);
     res.status(200).json({ transcript: text, filters });
   } catch (e) {
     console.warn("ask", e && e.message);

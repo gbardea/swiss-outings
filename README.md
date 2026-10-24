@@ -21,7 +21,9 @@ Deploy: import this repo in Vercel (framework: Other). Environment variables (al
 
 | Variable | Used for |
 | --- | --- |
-| `OPENAI_API_KEY` | Natural voice for “Listen” and AI voice search (without it: phone voice + simple keyword search) |
+| `ANTHROPIC_API_KEY` | Claude writes the day plans, the “Listen” scripts and understands voice/typed search (preferred for all text) |
+| `CLAUDE_FAST_MODEL`, `CLAUDE_SMART_MODEL` | Optional overrides (defaults: `claude-haiku-4-5-20251001` for scripts/search, `claude-sonnet-4-6` for day plans) |
+| `OPENAI_API_KEY` | Audio only: the natural “Listen” voice and transcribing recorded speech in browsers without built-in speech recognition. Also used for text if no Claude key is set. Without any key: phone voice + keyword search |
 | `VOICE_NAME`, `OPENAI_TTS_MODEL`, `OPENAI_TEXT_MODEL`, `OPENAI_STT_MODEL` | Optional overrides (defaults: `coral`, `gpt-4o-mini-tts`, `gpt-4o-mini`, `gpt-4o-mini-transcribe`) |
 | `RESEND_API_KEY`, `CONTACT_TO`, `CONTACT_FROM` | Emailing contact messages to the owner |
 | `CRON_SECRET` | Protects the daily voice warm-up cron |
