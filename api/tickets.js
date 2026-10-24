@@ -4,7 +4,7 @@ const { extract, liveAllowed, hostOf, robotsAllows } = require("../lib/tickets")
 
 const URL_ = "https://vwqtpffnsfyazyezfcdt.supabase.co";
 const KEY = "sb_publishable_CjjnuiiC3NX0OIlj2fyS2A_NyJ177I4";
-const AGENT = "SwissOutingsBot/1.0 (+https://swiss-outings.vercel.app; family events app, one request per ticket check)";
+const AGENT = "SwissOutingsBot/1.0 (+https://www.swissoutings.com; family events app, one request per ticket check)";
 
 function safeUrl(u) {
   try {

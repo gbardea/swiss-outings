@@ -3,7 +3,7 @@
 "use strict";
 const C = window.Capacitor;
 const native = !!(C && C.isNativePlatform && C.isNativePlatform());
-const WEB = (window.SO_CONFIG && window.SO_CONFIG.web) || "https://swiss-outings.vercel.app";
+const WEB = (window.SO_CONFIG && window.SO_CONFIG.web) || "https://www.swissoutings.com";
 const P = n => (native && C.Plugins && C.Plugins[n]) || null;
 const N = window.SO_native = {
   isNative: native,
