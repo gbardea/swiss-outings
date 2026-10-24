@@ -5,11 +5,11 @@
 //   POST /api/plan?action=build        {params}   → full plan
 //   POST /api/plan?action=alternatives {plan, index, exclude} → 3 replacement ideas for one stop
 //   POST /api/plan?action=reflow       {plan}     → recompute times, trains and costs after an edit
-// POSTs need a signed-in user (Supabase token). Env: OPENAI_API_KEY (+ optional OPENAI_TEXT_MODEL).
+// POSTs need a signed-in user (Supabase token). Env: ANTHROPIC_API_KEY (Claude, preferred) or OPENAI_API_KEY.
 const P = require("../lib/planner");
 const SB = "https://vwqtpffnsfyazyezfcdt.supabase.co";
 const SB_KEY = "sb_publishable_CjjnuiiC3NX0OIlj2fyS2A_NyJ177I4";
-const MODEL = process.env.OPENAI_PLAN_MODEL || process.env.OPENAI_TEXT_MODEL || "gpt-4o-mini";
+const LLM = require("../lib/llm");
 
 const bearer = req => { const h = String(req.headers.authorization || ""); return /^Bearer [\w-]+\.[\w-]+\.[\w-]+$/.test(h) ? h : null; };
 async function signedIn(auth) { try { const r = await fetch(`${SB}/auth/v1/user`, { headers: { apikey: SB_KEY, Authorization: auth }, signal: AbortSignal.timeout(5000) }); return r.ok; } catch (e) { return false; } }
@@ -48,12 +48,8 @@ function eventLine(e) {
   return [e.id, e.title, t && e.timeKnown ? "starts " + t[1] : "all day", e.venue, e.city, (e.audience || []).join("/"), e.category, price, String(e.summary || "").slice(0, 90)].join(" | ");
 }
 const STOP_SCHEMA = `{"type":"activity|meal|event","name":"","place_query":"name and town to find it on a map","town":"","arrive":"HH:MM","duration_min":90,"cost_chf":0,"why":"one warm sentence ≤140 chars","tip":"one practical tip","kids_note":"short note for kids or null","opening_note":"e.g. 'Open 10–17 in winter, check before going' or null","wiki_title":"English Wikipedia article title for fun facts, or null","event_id":"id from the events list or null","fixed_start":"HH:MM if it has a set start time, else null"}`;
-async function ai(messages, maxTokens) {
-  const r = await fetch("https://api.openai.com/v1/chat/completions", { method: "POST", signal: AbortSignal.timeout(30000),
-    headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ model: MODEL, temperature: 0.7, max_tokens: maxTokens, response_format: { type: "json_object" }, messages }) });
-  if (!r.ok) throw new Error("ai " + r.status);
-  return JSON.parse((await r.json()).choices[0].message.content || "{}");
+async function ai(messages, maxTokens) { // Claude (smart tier) when ANTHROPIC_API_KEY is set, otherwise OpenAI
+  return LLM.complete({ system: messages[0].content, user: messages[1].content, json: true, tier: "smart", temperature: 0.7, maxTokens, timeoutMs: 40000 });
 }
 function familyText(p) {
   const k = p.who.kids.length ? `${p.who.kids.length} kid${p.who.kids.length > 1 ? "s" : ""} aged ${p.who.kids.join(", ")}` : "no kids";
@@ -99,7 +95,7 @@ module.exports = async (req, res) => {
     }
     if (req.method !== "POST") return json(res, 405, { error: "POST only" });
     const auth = bearer(req); if (!auth || !(await signedIn(auth))) return json(res, 401, { error: "Please sign in again." });
-    if (!process.env.OPENAI_API_KEY && action !== "reflow") return json(res, 501, { error: "The day planner isn't switched on yet (it needs the AI key in Vercel)." });
+    if (!LLM.available() && action !== "reflow") return json(res, 501, { error: "The day planner isn't switched on yet (it needs the AI key in Vercel)." });
     const b = body(req);
 
     if (action === "build") {
