@@ -148,7 +148,7 @@ do $$ declare n int; j jsonb; begin
   perform public.admin_set_admin('00000000-0000-0000-0000-0000000000b1', true);
   perform public.admin_set_admin('00000000-0000-0000-0000-0000000000b1', false);
   perform public.admin_delete_user('00000000-0000-0000-0000-0000000000b1');
-  select count(*) into n from auth.users where id='00000000-0000-0000-0000-0000000000b1'; insert into t_res(name,ok) values ('admin can delete a user', n=0);
+  select count(*) into n from public.admin_users() where user_id='00000000-0000-0000-0000-0000000000b1'; insert into t_res(name,ok) values ('admin can delete a user', n=0);
   begin perform public.admin_set_admin(auth.uid(), false); insert into t_res(name,ok) values ('admin cannot remove own admin', false);
   exception when others then insert into t_res(name,ok) values ('admin cannot remove own admin', true); end;
 end $$;
