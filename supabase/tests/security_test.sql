@@ -79,7 +79,8 @@ do $$ declare n int; t text; begin
   select public.log_activity('[{"kind":"view","event_id":"zz-test-1"},{"kind":"drop_tables"}]') into n;
   insert into t_res(name,ok,info) values ('activity log accepts only known kinds', n=1, n::text);
   -- brute force a household code
-  for i in 1..10 loop begin perform public.join_household('WRONG'||i,'x'); exception when others then null; end; end loop;
+  insert into t_res(name,ok) values ('wrong household code returns nothing (no join)', public.join_household('WRONG0','x') is null and public.my_household() is null);
+  for i in 1..9 loop begin perform public.join_household('WRONG'||i,'x'); exception when others then null; end; end loop;
   begin perform public.join_household('TJOINAAA','x'); insert into t_res(name,ok) values ('code guessing is rate-limited (11th try blocked even if right)', false);
   exception when others then insert into t_res(name,ok,info) values ('code guessing is rate-limited (11th try blocked even if right)', sqlerrm ilike '%too many%', sqlerrm); end;
 end $$;

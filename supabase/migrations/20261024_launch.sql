@@ -83,7 +83,7 @@ declare h uuid; old uuid := public.my_household();
 begin
   perform public._code_guard();
   select id into h from households where join_code = upper(trim(p_code));
-  if h is null then raise exception 'That household code was not found'; end if;
+  if h is null then return null; end if;   -- not found: return null (raising would undo the recorded attempt)
   insert into members(user_id, household_id, display_name) values (auth.uid(), h, nullif(left(trim(p_name),40),''))
   on conflict (user_id) do update set household_id = excluded.household_id, display_name = coalesce(excluded.display_name, members.display_name);
   update picks set household_id = h where user_id = auth.uid();
@@ -129,7 +129,7 @@ begin
   if h is null then raise exception 'not in a household'; end if;
   perform public._code_guard();
   select id into f from households where friend_code = upper(trim(p_code));
-  if f is null then raise exception 'That friend code was not found'; end if;
+  if f is null then return null; end if;   -- not found: return null so the attempt stays counted
   if f = h then raise exception 'That is your own code'; end if;
   insert into friendships(household_id, friend_household_id) values (h,f),(f,h) on conflict do nothing;
   return f;
@@ -180,7 +180,7 @@ begin
          case when jsonb_typeof(x->'meta')='object' and pg_column_size(x->'meta') < 1500 then x->'meta' else '{}'::jsonb end
   from (select value x from jsonb_array_elements(p) limit 50) s
   where x->>'kind' in ('app_open','sign_in','sign_up','view','keen','unkeen','going','ungoing','hide','unhide',
-                       'calendar','tickets','official','video','photos','map','share','invite','contact','install_help','search','filter');
+                       'calendar','tickets','official','video','photos','map','share','invite','contact','install_help','search','filter','listen');
   get diagnostics n = row_count; return n;
 end $$;
 
@@ -251,15 +251,17 @@ begin
   );
 end $$;
 
+drop function if exists public.admin_users();
 create or replace function public.admin_users()
 returns table(user_id uuid, email text, display_name text, household_id uuid, household_name text, is_admin boolean,
               created_at timestamptz, confirmed boolean, last_sign_in_at timestamptz, last_active timestamptz,
-              views bigint, keen bigint, going bigint, hidden bigint, clicks bigint, shares bigint)
+              views bigint, listens bigint, keen bigint, going bigint, hidden bigint, clicks bigint, shares bigint)
 language sql stable security definer set search_path = public, auth as $$
   select u.id, u.email::text, m.display_name, m.household_id, h.name, coalesce(m.is_admin,false), u.created_at,
          u.email_confirmed_at is not null, u.last_sign_in_at,
          (select max(at) from activity a where a.user_id = u.id),
          (select count(*) from activity a where a.user_id = u.id and kind='view'),
+         (select count(*) from activity a where a.user_id = u.id and kind='listen'),
          (select count(*) from picks p where p.user_id = u.id and state='interested'),
          (select count(*) from picks p where p.user_id = u.id and state='going'),
          (select count(*) from hidden x where x.by_user = u.id),
@@ -297,14 +299,16 @@ language sql stable security definer set search_path = public, auth as $$
   order by a.at desc limit least(greatest(p_limit,1),1000)
 $$;
 
+drop function if exists public.admin_event_stats(int);
 create or replace function public.admin_event_stats(p_days int default 30)
-returns table(event_id text, title text, start_date date, category text, views bigint, keen bigint, going bigint,
+returns table(event_id text, title text, start_date date, category text, views bigint, listens bigint, keen bigint, going bigint,
               hidden bigint, clicks bigint, shares bigint)
 language sql stable security definer set search_path = public as $$
   with a as (select event_id, kind from activity where at > now() - make_interval(days => p_days) and event_id is not null),
   ids as (select event_id from a union select event_id from picks union select event_id from hidden)
   select i.event_id, coalesce(e.data->>'title', (select max(event_title) from activity x where x.event_id = i.event_id)), e.start_date, e.data->>'category',
          (select count(*) from a where a.event_id = i.event_id and kind='view'),
+         (select count(*) from a where a.event_id = i.event_id and kind='listen'),
          (select count(*) from picks p where p.event_id = i.event_id and state='interested'),
          (select count(*) from picks p where p.event_id = i.event_id and state='going'),
          (select count(*) from hidden h where h.event_id = i.event_id),
@@ -312,7 +316,7 @@ language sql stable security definer set search_path = public as $$
          (select count(*) from a where a.event_id = i.event_id and kind = 'share')
   from ids i left join events e on e.id = i.event_id
   where public.i_am_admin()
-  order by 5 desc, 6 desc, 7 desc limit 300
+  order by 5 desc, 7 desc, 8 desc limit 300
 $$;
 
 create or replace function public.admin_messages()

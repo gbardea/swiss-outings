@@ -14,6 +14,7 @@ function cacheGet(k){ try{ return JSON.parse(localStorage.getItem("so."+k)||"nul
 function cacheSet(k,v){ try{ v==null?localStorage.removeItem("so."+k):localStorage.setItem("so."+k, JSON.stringify(v)); }catch(e){} }
 if(params.get("invite")) cacheSet("pending", {invite: params.get("invite").toUpperCase()});
 if(params.get("join")) cacheSet("pending", {join: params.get("join").toUpperCase()});
+if(params.get("e")) cacheSet("openEvent", params.get("e"));
 const pending = () => cacheGet("pending") || {};
 
 /* ---------- friendly errors ---------- */
@@ -69,7 +70,7 @@ const screens = {
       <div class="ob-card ob-wcard">
         <div class="ob-brand"><span class="cross">${X}</span><h1>Swiss Outings</h1></div>
         ${p.invite||p.join?`<p class="ob-invited">🎉 You've been invited</p>`:""}
-        <p class="ob-lead">Concerts, carnivals, cow parades and village gigs across Switzerland, found for you every morning.</p>
+        <p class="ob-lead">Concerts, carnivals, cow parades and village gigs across Switzerland, found for you every morning. Free.</p>
         <ul class="ob-points">
           <li><b>${(previewEvents||[]).filter(e=>!A.isPast(e)).length||"250+"}</b> upcoming events, big and small</li>
           <li>Plan together: <b>♥ keen</b> and <b>✓ going</b> are shared with your partner</li>
@@ -134,7 +135,7 @@ const screens = {
       const r = await sb.auth.signInWithPassword({ email, password: $("#pw").value });
       busy(b,false);
       if(r.error) return screens.signin(friendly(r.error.message), email);
-      start();
+      A.track("sign_in"); start();
     };
   },
 
@@ -150,47 +151,45 @@ const screens = {
     $("#f").onsubmit = async ev => { ev.preventDefault(); const {error}=await sb.auth.updateUser({password:$("#pw").value}); if(error) return screens.newPassword(friendly(error.message)); history.replaceState(null,"","/"); start(); };
   },
 
-  profile(m){
-    const p = pending(); const mode = p.invite ? "invite" : "join";
-    const locked = !!(p.invite || p.join);
-    gate(card(`${dots(2)}<h2>About you</h2><p class="ob-sub">${locked?(p.invite?"Your invite code is filled in. Just add your name and a household name.":"Your partner's code is filled in. Just add your first name."):"How should the app greet you, and whose plans do you share?"}</p>
+  profile(m, showJoin){
+    const p = pending(); const joining = !!p.join || !!showJoin;
+    gate(card(`${dots(2)}<h2>About you</h2><p class="ob-sub">${p.join?"Your partner's code is filled in. Just add your first name.":p.invite?"You were invited by a friend. Add your name and you're in.":"How should the app greet you?"}</p>
       <form id="f" class="ob-form" novalidate>
         ${field("nm","Your first name",`required autocomplete="given-name" autocapitalize="words" value="${esc(cacheGet("name")||"")}"`)}
-        ${locked?"":`<div class="ob-choice" role="radiogroup" aria-label="How are you joining?">
-          <button type="button" role="radio" data-mode="join" aria-checked="${mode==="join"}"><b>👫 Join my partner</b><span>They're already on Outings and gave you a 6-letter household code.</span></button>
-          <button type="button" role="radio" data-mode="invite" aria-checked="${mode==="invite"}"><b>✉️ I have a friend's invite</b><span>Start your own household. Your plans stay private.</span></button>
-        </div>`}
-        <div id="joinBox" ${mode==="join"?"":"hidden"}>${field("jc","Household code",`autocapitalize="characters" autocomplete="off" spellcheck="false" placeholder="e.g. BARDEA" value="${esc(p.join||"")}" ${p.join?"readonly":""}`)}</div>
-        <div id="invBox" ${mode==="invite"?"":"hidden"}>${field("ic","Invite code",`autocapitalize="characters" autocomplete="off" spellcheck="false" value="${esc(p.invite||"")}" ${p.invite?"readonly":""}`)}${field("hn","Household name",`placeholder="e.g. The Cohens" autocapitalize="words"`)}</div>
+        ${joining
+          ? field("jc","Your partner's household code",`autocapitalize="characters" autocomplete="off" spellcheck="false" placeholder="8 letters, from your partner's Settings" value="${esc(p.join||"")}" ${p.join?"readonly":""}`)
+          : field("hn","Household name (optional)",`placeholder="e.g. The Müllers" autocapitalize="words"`)}
         ${msgBox(m)}
         <button class="btn primary ob-cta" type="submit">Continue</button>
       </form>
-      <p class="ob-foot">No code? Ask whoever told you about Swiss Outings. It's invite-only. · <a href="#" id="obOut">Sign out</a></p>`));
-    let cur = mode;
-    document.querySelectorAll("[data-mode]").forEach(b=>b.onclick=()=>{ cur=b.dataset.mode; document.querySelectorAll("[data-mode]").forEach(x=>x.setAttribute("aria-checked", x===b)); $("#joinBox").hidden=cur!=="join"; $("#invBox").hidden=cur!=="invite"; });
+      <p class="ob-foot">${joining?(p.join?"":`<a href="#" id="obNew">Start my own household instead</a> · `):`Is your partner already on Swiss Outings? <a href="#" id="obJoin">Join their household</a> · `}<a href="#" id="obOut">Sign out</a></p>`));
     $("#obOut").onclick = async e => { e.preventDefault(); await sb.auth.signOut(); cacheSet("pending",null); location.href="/"; };
+    const j=$("#obJoin"); if(j) j.onclick = e => { e.preventDefault(); cacheSet("name",$("#nm").value.trim()); screens.profile(null,true); };
+    const n=$("#obNew"); if(n) n.onclick = e => { e.preventDefault(); cacheSet("name",$("#nm").value.trim()); screens.profile(null,false); };
     $("#nm").focus();
     $("#f").onsubmit = async ev => {
-      ev.preventDefault(); const name=$("#nm").value.trim(); if(!name) return screens.profile("Please add your first name.");
+      ev.preventDefault(); const name=$("#nm").value.trim(); if(!name) return screens.profile("Please add your first name.", joining);
       cacheSet("name", name);
       const b=ev.target.querySelector("button[type=submit]"); busy(b,true);
-      const r = cur==="invite" ? await sb.rpc("redeem_invite",{p_code:$("#ic").value, p_household_name:$("#hn").value, p_name:name})
-                               : await sb.rpc("join_household",{p_code:$("#jc").value, p_name:name});
+      const r = joining ? await sb.rpc("join_household",{p_code:$("#jc").value, p_name:name})
+                        : await sb.rpc("create_household",{p_household_name:$("#hn").value, p_name:name, p_invite:p.invite||null});
       busy(b,false);
-      if(r.error) return screens.profile(friendly(r.error.message));
-      cacheSet("pending", null); history.replaceState(null,"","/");
+      if(r.error) return screens.profile(friendly(r.error.message), joining);
+      if(joining && !r.data) return screens.profile("We couldn't find that household code. Check it with your partner (Settings → Your household).", true);
+      A.track("sign_up", null, {joined: joining ? "partner" : (p.invite ? "friend-invite" : "new")});
+      cacheSet("pending", null); history.replaceState(null,"","/"+(cacheGet("openEvent")?"?e="+encodeURIComponent(cacheGet("openEvent")):""));
       cacheSet("needsInstall", 1);
       start();
     };
   },
 
   install(){
-    gate(card(`${dots(3)}<h2>Put it on your home screen</h2><p class="ob-sub">Outings opens full-screen like a real app, with no App Store needed.</p>
+    gate(card(`${dots(3)}<h2>Put it on your home screen</h2><p class="ob-sub">Our App Store app is on its way. Until then, add Swiss Outings to your home screen: it opens full-screen, just like an app.</p>
       ${IG.stepsHTML()}
       <button class="btn primary ob-cta" type="button" id="obDone">${IG.platform()==="desktop"?"Continue to the app":"Done, show me events"}</button>
       <p class="ob-foot"><a href="#" id="obLater">I'll do it later</a> · You can always find this in Settings.</p>`, {wide:true}) + IG.pointer());
     IG.wire($("#gate"));
-    const done = () => { cacheSet("needsInstall", null); gate(null); document.querySelector(".ig-pointer")?.remove(); A.toast("Welcome"+(cacheGet("name")?", "+cacheGet("name"):"")+"! Tap ♥ on anything you like."); };
+    const done = () => { cacheSet("needsInstall", null); gate(null); document.querySelector(".ig-pointer")?.remove(); A.toast("Welcome"+(cacheGet("name")?", "+cacheGet("name"):"")+"! Tap ♥ on anything you like."); setTimeout(A.maybeShowTips, 2500); };
     $("#obDone").onclick = done; $("#obLater").onclick = e => { e.preventDefault(); done(); };
   }
 };
@@ -260,12 +259,13 @@ async function start(){
     if(params.get("confirmed")) return screens.signin("Great! Your email is confirmed. Sign in to continue.");
     return (p.invite||p.join) ? screens.welcome() : (cacheGet("email") ? screens.signin() : screens.welcome());
   }
-  S.uid = session.user.id;
+  S.uid = session.user.id; S.email = session.user.email || "";
   const mem = await sb.from("members").select("user_id,household_id,display_name,is_admin").eq("user_id", S.uid).maybeSingle();
   if(!mem.data) return screens.profile();
   S.isAdmin = !!mem.data.is_admin;
-  const hh = await sb.from("households").select("*").eq("id", mem.data.household_id).single();
-  S.household = hh.data;
+  const hh = await sb.from("households").select("id,name,prefs,created_at").eq("id", mem.data.household_id).single();
+  S.household = hh.data || {id: mem.data.household_id};
+  const codes = await sb.rpc("my_codes"); if(codes.data && codes.data[0]) Object.assign(S.household, codes.data[0]);
   const ms = await sb.from("members").select("user_id,display_name,is_admin").eq("household_id", S.household.id);
   S.members={}; (ms.data||[]).forEach(m=>S.members[m.user_id]=m);
   if(cacheGet("needsInstall") && !IG.isStandalone()) screens.install(); else gate(null);
@@ -279,6 +279,10 @@ async function start(){
   setSubline();
   A.render();
   realtime();
+  A.track("app_open", null, {installed: IG.isStandalone(), platform: IG.platform()});
+  const ev = cacheGet("openEvent");
+  if(ev){ cacheSet("openEvent", null); history.replaceState(null,"","/"); if(S.events.some(x=>x.id===ev)) A.openSheet(ev); else A.toast("That event has finished or was removed."); }
+  else if(!cacheGet("needsInstall")) A.maybeShowTips();
 }
 sb.auth.onAuthStateChange((ev)=>{ if(ev==="PASSWORD_RECOVERY") screens.newPassword(); });
 start();

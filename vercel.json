@@ -28,5 +28,25 @@
         }
       ]
     }
+  ],
+  "functions": {
+    "api/voice.js": {
+      "maxDuration": 60
+    },
+    "api/voice-warm.js": {
+      "maxDuration": 60
+    }
+  },
+  "crons": [
+    {
+      "path": "/api/voice-warm",
+      "schedule": "40 5 * * *"
+    }
+  ],
+  "rewrites": [
+    {
+      "source": "/e/:id",
+      "destination": "/api/share?id=:id"
+    }
   ]
 }

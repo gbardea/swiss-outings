@@ -64,6 +64,70 @@ function isNew(e){
   return f && f>seed && (TODAY-f)/864e5 <= 7;
 }
 function isHot(e){ return e.ticketStatus==="selling fast" || (e.ticketStatus==="not yet on sale") ; }
+/* only ever put http(s) links into href attributes (event data comes from the web) */
+function safeHref(u){ u=String(u||"").trim(); return /^https?:\/\//i.test(u) ? u : ""; }
+
+/* ---------- activity log (admin page) ---------- */
+const LOGQ=[]; let logT=null;
+function track(kind, eventId, meta){
+  LOGQ.push({kind, event_id:eventId||null, meta:meta||{}});
+  clearTimeout(logT); logT=setTimeout(flushLog, 2500);
+}
+function flushLog(){ if(!LOGQ.length || !window.sb || !S.uid) return; const p=LOGQ.splice(0,50); window.sb.rpc("log_activity",{p}).then(()=>{},()=>{}); if(LOGQ.length) logT=setTimeout(flushLog,1000); }
+document.addEventListener("visibilitychange", ()=>{ if(document.hidden) flushLog(); });
+window.addEventListener("pagehide", flushLog);
+
+/* ---------- voice summaries ("Listen") ---------- */
+// Must match voiceVersion() in lib/voice.js so the edge cache is shared.
+function voiceVersion(e){ const s=[e.updatedAt||"", e.start||"", e.title||"", e.ticketStatus||"", e.priceFromCHF==null?"":e.priceFromCHF].join("|"); return hash(s).toString(36); }
+const VO={id:null, audio:null, state:null, left:null, utter:null};
+function voiceUrl(e){ return window.SO_native.api("/api/voice")+"?id="+encodeURIComponent(e.id)+"&v="+voiceVersion(e); }
+function stopVoice(){
+  if(VO.audio){ try{ VO.audio.pause(); VO.audio.removeAttribute("src"); VO.audio.load(); }catch(x){} }
+  if(VO.utter && window.speechSynthesis){ try{ speechSynthesis.cancel(); }catch(x){} }
+  const id=VO.id; VO.id=null; VO.audio=null; VO.utter=null; VO.state=null; VO.left=null; if(id) paintListen(id);
+}
+function fmtLeft(s){ s=Math.max(0,Math.ceil(s||0)); return Math.floor(s/60)+":"+String(s%60).padStart(2,"0"); }
+function listenInner(id, big){
+  const on=VO.id===id;
+  if(on && VO.state==="loading") return `<span class="spin" aria-hidden="true"></span><span>${big?"Getting it ready…":"Loading"}</span>`;
+  if(on) return `<span class="eq" aria-hidden="true"><i></i><i></i><i></i><i></i></span><span>${VO.left!=null?fmtLeft(VO.left):"Playing"}</span>${big?"<span class=\"lsub\">tap to stop</span>":""}`;
+  return `${icon("sound")}<span>${big?"Listen · 20-second summary":"Listen"}</span>`;
+}
+function listenBtn(e, big){ return `<button type="button" class="${big?"btn listen-big":"listen"} ${VO.id===e.id?"playing":""}" data-act="listen" data-id="${esc(e.id)}" aria-label="${VO.id===e.id?"Stop the spoken summary":"Listen to a short spoken summary of "+esc(e.title)}">${listenInner(e.id,big)}</button>`; }
+function paintListen(id){
+  document.querySelectorAll(`[data-act="listen"][data-id="${CSS.escape(id)}"]`).forEach(b=>{
+    const big=b.classList.contains("listen-big"); b.classList.toggle("playing", VO.id===id); b.innerHTML=listenInner(id,big);
+    b.setAttribute("aria-label", VO.id===id ? "Stop the spoken summary" : "Listen to a short spoken summary");
+  });
+}
+function speakFallback(id, script){
+  if(VO.id!==id) return;
+  if(!window.speechSynthesis || !script){ stopVoice(); toast("Sorry, the spoken summary isn't available right now."); return; }
+  const u=new SpeechSynthesisUtterance(script); u.lang="en-GB"; u.rate=1.02;
+  const v=speechSynthesis.getVoices().find(x=>/en[-_](GB|US|AU|IE)/i.test(x.lang) && /natural|enhanced|premium|siri|google/i.test(x.name)) || speechSynthesis.getVoices().find(x=>/^en/i.test(x.lang));
+  if(v) u.voice=v;
+  const total=Math.max(8, script.split(/\s+/).length/2.6); const t0=Date.now();
+  u.onstart=()=>{ if(VO.id!==id) return; VO.state="playing"; const tick=()=>{ if(VO.id!==id||VO.utter!==u) return; VO.left=total-(Date.now()-t0)/1000; paintListen(id); setTimeout(tick,500); }; tick(); };
+  u.onend=u.onerror=()=>{ if(VO.utter===u) stopVoice(); };
+  VO.utter=u; speechSynthesis.cancel(); speechSynthesis.speak(u);
+}
+function listen(id){
+  if(VO.id===id){ stopVoice(); return; }
+  stopVoice();
+  const e=S.events.find(x=>x.id===id); if(!e) return;
+  VO.id=id; VO.state="loading"; paintListen(id); track("listen", id);
+  // iOS needs audio and speech to start inside the tap, so start both "unlocks" right here.
+  if(window.speechSynthesis){ try{ const w=new SpeechSynthesisUtterance(" "); w.volume=0; speechSynthesis.speak(w); }catch(x){} }
+  const a=new Audio(); VO.audio=a; a.preload="auto"; a.src=voiceUrl(e);
+  a.onplaying=()=>{ if(VO.audio!==a) return; VO.state="playing"; paintListen(id); };
+  a.ontimeupdate=()=>{ if(VO.audio!==a||!isFinite(a.duration)) return; const l=Math.ceil(a.duration-a.currentTime); if(l!==VO.left){ VO.left=l; paintListen(id); } };
+  a.onended=()=>{ if(VO.audio===a) stopVoice(); };
+  a.onerror=async()=>{ if(VO.audio!==a) return; VO.audio=null;
+    // The server answers with JSON when no AI voice is set up (or it failed): read that script with the phone's voice.
+    try{ const r=await fetch(voiceUrl(e)); const j=await r.json(); speakFallback(id, j.script); }catch(x){ speakFallback(id, null); } };
+  const p=a.play(); if(p&&p.catch) p.catch(err=>{ if(err&&err.name==="NotAllowedError"&&VO.audio===a){ stopVoice(); toast("Tap Listen again to play."); } });
+}
 function audClass(a){ return a==="Parents"?"P":a==="Kids"?"K":"F"; }
 
 /* ---------- poster art (generative, per category) ---------- */
@@ -152,6 +216,9 @@ function matches(e){
     else { const lim=addDays(TODAY,+S.when); if(s>lim) return false; if(en<TODAY) return false; }
   }
   if(S.q){ const hay=(e.title+" "+e.venue+" "+e.city+" "+(e.tags||[]).join(" ")+" "+e.summary+" "+e.category).toLowerCase(); if(!S.q.split(/\s+/).every(w=>hay.includes(w))) return false; }
+  if(S.from||S.to){ const a=S.from?parseD(S.from):null, b=S.to?parseD(S.to):null; if(b && dayOnly(evStart(e))>b) return false; if(a && dayOnly(evEnd(e))<a) return false; }
+  if(S.maxPrice!=null && !(e.free || (e.priceFromCHF!=null && e.priceFromCHF!=="" && +e.priceFromCHF<=S.maxPrice))) return false;
+  if(S.kw && S.kw.length){ const hay=(e.title+" "+(e.tags||[]).join(" ")+" "+e.summary+" "+(e.description||"")+" "+e.venue+" "+e.city).toLowerCase(); if(!S.kw.some(k=>hay.includes(k))) return false; }
   return true;
 }
 function filtered(){ return S.events.filter(matches).sort((a,b)=>evStart(a)-evStart(b)); }
@@ -187,7 +254,13 @@ function statusTags(e){
   return t;
 }
 function icon(n){
-  const P={heart:'<path d="M12 21s-7.5-4.6-9.5-9.2C1 8.3 3.3 5 6.6 5c2 0 3.4 1.1 4.4 2.5C12 6.1 13.4 5 15.4 5 18.7 5 21 8.3 19.5 11.8 17.5 16.4 12 21 12 21z"/>',check:'<path d="M5 12.5l4.5 4.5L19 7.5"/>',mail:'<rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/>',cal:'<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>',ticket:'<path d="M3 8a2 2 0 0 0 2-2h14a2 2 0 0 0 2 2v8a2 2 0 0 0-2 2H5a2 2 0 0 0-2-2z"/><path d="M13 6v12" stroke-dasharray="2 2"/>',link:'<path d="M10 14a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 10a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/>',play:'<circle cx="12" cy="12" r="9"/><path d="M10 8.5v7l6-3.5z" fill="currentColor"/>',img:'<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="m21 17-5-5-9 8"/>',pin:'<path d="M12 21s7-6.1 7-11.5A7 7 0 0 0 5 9.5C5 14.9 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/>',x:'<path d="M6 6l12 12M18 6 6 18"/>'};
+  const P={heart:'<path d="M12 21s-7.5-4.6-9.5-9.2C1 8.3 3.3 5 6.6 5c2 0 3.4 1.1 4.4 2.5C12 6.1 13.4 5 15.4 5 18.7 5 21 8.3 19.5 11.8 17.5 16.4 12 21 12 21z"/>',check:'<path d="M5 12.5l4.5 4.5L19 7.5"/>',mail:'<rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/>',cal:'<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>',ticket:'<path d="M3 8a2 2 0 0 0 2-2h14a2 2 0 0 0 2 2v8a2 2 0 0 0-2 2H5a2 2 0 0 0-2-2z"/><path d="M13 6v12" stroke-dasharray="2 2"/>',link:'<path d="M10 14a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 10a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/>',play:'<circle cx="12" cy="12" r="9"/><path d="M10 8.5v7l6-3.5z" fill="currentColor"/>',img:'<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="m21 17-5-5-9 8"/>',pin:'<path d="M12 21s7-6.1 7-11.5A7 7 0 0 0 5 9.5C5 14.9 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/>',x:'<path d="M6 6l12 12M18 6 6 18"/>',
+    sound:'<path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z" fill="currentColor"/><path d="M15.5 9a4 4 0 0 1 0 6M18.5 6.5a7.5 7.5 0 0 1 0 11"/>',
+    share:'<path d="M12 3v12"/><path d="m7.5 7.5 4.5-4.5 4.5 4.5"/><path d="M6 11H5a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-8a1 1 0 0 0-1-1h-1"/>',
+    wa:'<path d="M4 20l1.3-4A8 8 0 1 1 8.4 19z"/><path d="M9 8.5c0 3.5 3 6.5 6.5 6.5l1-1.6-2-1-1 1a4 4 0 0 1-2.4-2.4l1-1-1-2z" fill="currentColor" stroke="none"/>',
+    users:'<circle cx="9" cy="8" r="3.2"/><path d="M3 20a6 6 0 0 1 12 0"/><path d="M16 4.5a3.2 3.2 0 0 1 0 6.4M18 14a6 6 0 0 1 3 6"/>',
+    mic:'<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21M8.5 21h7"/>',
+    help:'<circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.4 2.3c-.6.3-.9.8-.9 1.4v.6"/><circle cx="12" cy="17" r=".6" fill="currentColor"/>'};
   const fill = n==="heart"?"currentColor":"none";
   return `<svg viewBox="0 0 24 24" fill="${fill}" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${P[n]}</svg>`;
 }
@@ -206,7 +279,7 @@ function cardHTML(e){
     <div class="art">${poster(e,{uid:id})}
       <div class="tl"><span class="tag">${esc(e.category)}</span>${e.scale==="gem"?'<span class="tag gem">Gem</span>':""}</div>
       <div class="tr">${statusTags(e)}</div>
-      ${dateBox(e)}<div class="br">${avatars(e.id)}${(()=>{const p=priceLabel(e);return `<span class="pricetag ${p.c}">${esc(p.t)}</span>`;})()}</div>
+      <div class="bl">${dateBox(e)}${listenBtn(e)}</div><div class="br">${avatars(e.id)}${(()=>{const p=priceLabel(e);return `<span class="pricetag ${p.c}">${esc(p.t)}</span>`;})()}</div>
     </div>
     <div class="body">
       <h3 class="title">${esc(e.title)}</h3>
@@ -253,11 +326,11 @@ function weekendRange(){
 function overlaps(e,a,b){ return dayOnly(evStart(e))<=b && dayOnly(evEnd(e))>=a; }
 function discoverView(){
   const list=filtered();
-  if(!list.length) return statusLine()+`<div class="empty" style="margin-top:20px">Nothing matches these filters. Clear a filter or widen the time range.</div>`;
+  if(!list.length) return askBar()+statusLine()+`<div class="empty" style="margin-top:20px">Nothing matches these filters. <button class="chip" type="button" data-ask-clear>Clear all filters</button></div>`;
   const [wa,wb]=weekendRange();
   const wk=list.filter(e=>overlaps(e,wa,wb) && spanDays(e)<30);
   const ongoing=list.filter(e=>isOngoing(e) && spanDays(e)>=30);
-  let h=statusLine();
+  let h=askBar()+statusLine();
   if(wk.length){ h+=sec("This weekend", wk.length, `${DOW[wa.getDay()]} ${wa.getDate()} – ${DOW[wb.getDay()]} ${wb.getDate()} ${MON[wb.getMonth()]}`)+`<div class="rail">${wk.map(cardHTML).join("")}</div>`; }
   const after=list.filter(e=>!wk.includes(e) && !ongoing.includes(e));
   const byMonth={}; after.forEach(e=>{ const s=isOngoing(e)?TODAY:evStart(e); const k=s.getFullYear()+"-"+String(s.getMonth()).padStart(2,"0"); (byMonth[k]=byMonth[k]||[]).push(e); });
@@ -292,8 +365,8 @@ function calendarView(){
 function whoView(){
   const list=filtered();
   const col=(k,title,sw,note)=>{ const arr=list.filter(e=>(e.audience||[]).includes(k)).slice(0,60); return `<section class="col" data-k="${k}"><div class="col-h"><span class="sw" style="background:${sw}"></span><h3>${title}</h3><p>${list.filter(e=>(e.audience||[]).includes(k)).length}</p></div>${note?`<div class="kidnote">${note}</div>`:""}${arr.map(rowHTML).join("")||'<div class="empty">None with these filters.</div>'}</section>`; };
-  const tabs=`<div class="whotabs">${[["Parents","Parents"],["Kids","Liam &amp; Ellie"],["Family","Family"]].map(([k,l])=>`<button class="chip" data-who="${k}" aria-pressed="${S.whoTab===k}">${l}</button>`).join("")}</div>`;
-  return statusLine()+tabs+`<div class="cols tab-${S.whoTab}">${col("Parents","Parents","#7C3AED","Date nights, concerts, food and grown-up culture.")}${col("Kids","Liam &amp; Ellie","#E8590C","Carnivals, kids festivals and hands-on fun.")}${col("Family","All four of us","#0CA678","Things everyone enjoys together.")}</div>`;
+  const tabs=`<div class="whotabs">${[["Parents","Parents"],["Kids","Kids"],["Family","Family"]].map(([k,l])=>`<button class="chip" data-who="${k}" aria-pressed="${S.whoTab===k}">${l}</button>`).join("")}</div>`;
+  return askBar()+statusLine()+tabs+`<div class="cols tab-${S.whoTab}">${col("Parents","Parents","#7C3AED","Date nights, concerts, food and grown-up culture.")}${col("Kids","Kids","#E8590C","Carnivals, kids festivals and hands-on fun.")}${col("Family","The whole family","#0CA678","Things everyone enjoys together.")}</div>`;
 }
 function oursView(){
   const up=S.events.filter(e=>!isPast(e) && !S.hidden[e.id]);
@@ -315,17 +388,20 @@ function openSheet(id){
   const people=peopleFor(e.id);
   const maps="https://www.google.com/maps/search/?api=1&query="+encodeURIComponent([e.venue,e.address||e.city].filter(Boolean).join(", "));
   const photos="https://www.google.com/search?tbm=isch&q="+encodeURIComponent(e.title+" "+(e.city||""));
-  const video=e.videoUrl || ("https://www.youtube.com/results?search_query="+encodeURIComponent(e.title));
+  const video=safeHref(e.videoUrl) || ("https://www.youtube.com/results?search_query="+encodeURIComponent(e.title));
+  const official=safeHref(e.url), src=safeHref(e.source);
+  track("view", e.id);
   const conf = e.confidence==="likely" ? `<div class="note warn">Date not yet confirmed by the organiser. It's based on previous years, so check the official page before booking.</div>` : "";
   $("#sheetHost").innerHTML = `<div class="scrim" data-close="1"><div class="sheet" data-ev="${esc(e.id)}" role="dialog" aria-modal="true" aria-label="${esc(e.title)}">
     <div class="art" style="position:relative">${poster(e,{uid:"s",grain:true})}<div class="tl"><span class="tag">${esc(e.category)}</span>${e.scale==="gem"?'<span class="tag gem">Gem</span>':'<span class="tag">Big event</span>'}${statusTags(e)}</div>${dateBox(e)}<button class="close" data-close="1" aria-label="Close">${icon("x")}</button></div>
     <div class="inner">
       <h2>${esc(e.title)}</h2>
       <p class="lede">${esc(e.summary)}</p>
+      ${listenBtn(e,true)}
       <div class="btnrow">
         <button class="btn primary" data-act="cal" data-id="${esc(e.id)}">${icon("cal")} Add to calendar</button>
-        <a class="btn" href="${esc(gcalUrl(e))}" target="_blank" rel="noopener">${icon("cal")} Google Calendar</a>
-        ${e.ticketUrl && e.ticketStatus!=="free entry" ? `<button class="btn ticket" data-act="tix" data-id="${esc(e.id)}" aria-expanded="${S.tixOpen===e.id}">${icon("ticket")} ${e.ticketStatus==="sold out"?"Tickets (sold out)":"Get tickets"}</button>`:""}
+        <a class="btn" href="${esc(gcalUrl(e))}" target="_blank" rel="noopener" data-track="calendar" data-id="${esc(e.id)}">${icon("cal")} Google Calendar</a>
+        ${safeHref(e.ticketUrl) && e.ticketStatus!=="free entry" ? `<button class="btn ticket" data-act="tix" data-id="${esc(e.id)}" aria-expanded="${S.tixOpen===e.id}">${icon("ticket")} ${e.ticketStatus==="sold out"?"Tickets (sold out)":"Get tickets"}</button>`:""}
       </div>
       <div id="tixPanel">${S.tixOpen===e.id?tixHTML(e):""}</div>
       <div class="btnrow">
@@ -334,11 +410,16 @@ function openSheet(id){
         <button class="btn" data-act="skip" data-id="${esc(e.id)}">${icon("x")} Not for us</button>
         ${people.length||(S.friendPicks[e.id]||[]).length?`<div class="whobox">${people.map(([u,st])=>`<span class="person">${avatarEl(u)}${esc(personName(u))} · ${st==="going"?"going":"keen"}</span>`).join("")}${(S.friendPicks[e.id]||[]).map(f=>`<span class="person"><span class="av fr">★</span>${esc(f.household_name)} · ${f.state==="going"?"going":"keen"}</span>`).join("")}</div>`:""}
       </div>
+      <div class="sharebox"><span class="sharelbl">Send to someone</span>
+        <button class="btn wa" type="button" data-sendev="wa" data-id="${esc(e.id)}">${icon("wa")} WhatsApp</button>
+        <button class="btn" type="button" data-sendev="mail" data-id="${esc(e.id)}">${icon("mail")} Email</button>
+        <button class="btn" type="button" data-sendev="more" data-id="${esc(e.id)}">${icon("share")} ${navigator.share||window.SO_native.isNative?"More":"Copy link"}</button>
+      </div>
       ${conf}
       <p class="desc">${esc(e.description)}</p>
       <dl class="facts">
         <dt>When</dt><dd class="mono">${esc(whenText(e))}${!e.timeKnown?" · time TBC":""}</dd>
-        <dt>Where</dt><dd>${esc(e.venue||"")}<br><span style="color:var(--muted)">${esc(e.address||e.city||"")}</span> · <a href="${esc(maps)}" target="_blank" rel="noopener">Map</a></dd>
+        <dt>Where</dt><dd>${esc(e.venue||"")}<br><span style="color:var(--muted)">${esc(e.address||e.city||"")}</span> · <a href="${esc(maps)}" target="_blank" rel="noopener" data-track="map" data-id="${esc(e.id)}">Map</a></dd>
         <dt>Price</dt><dd><b class="mono">${esc(priceLabel(e).t)}</b>${e.priceText&&!e.free&&e.priceText!==priceLabel(e).t?`<br><span style="color:var(--muted)">${esc(e.priceText)}</span>`:""}</dd>
         <dt>Tickets</dt><dd>${esc(ticketLine(e))}</dd>
         <dt>For</dt><dd>${(e.audience||[]).map(a=>`<span class="pill ${audClass(a)}">${esc(a)}</span>`).join(" ")}</dd>
@@ -347,20 +428,20 @@ function openSheet(id){
         ${(e.tags||[]).length?`<dt>Tags</dt><dd style="color:var(--muted)">${(e.tags||[]).map(esc).join(" · ")}</dd>`:""}
       </dl>
       <div class="btnrow">
-        ${e.url?`<a class="btn" href="${esc(e.url)}" target="_blank" rel="noopener">${icon("link")} Official page</a>`:""}
-        <a class="btn" href="${esc(video)}" target="_blank" rel="noopener">${icon("play")} Video</a>
-        <a class="btn" href="${esc(photos)}" target="_blank" rel="noopener">${icon("img")} Photos</a>
-        <a class="btn" href="${esc(maps)}" target="_blank" rel="noopener">${icon("pin")} Directions</a>
+        ${official?`<a class="btn" href="${esc(official)}" target="_blank" rel="noopener" data-track="official" data-id="${esc(e.id)}">${icon("link")} Official page</a>`:""}
+        <a class="btn" href="${esc(video)}" target="_blank" rel="noopener" data-track="video" data-id="${esc(e.id)}">${icon("play")} Video</a>
+        <a class="btn" href="${esc(photos)}" target="_blank" rel="noopener" data-track="photos" data-id="${esc(e.id)}">${icon("img")} Photos</a>
+        <a class="btn" href="${esc(maps)}" target="_blank" rel="noopener" data-track="map" data-id="${esc(e.id)}">${icon("pin")} Directions</a>
       </div>
       <div id="inviteMsg"></div>
-      <p class="note">“Add to calendar” opens the event in your phone’s calendar and marks it Going. ${e.source?`Source: <a href="${esc(e.source)}" target="_blank" rel="noopener">${esc(hostOf(e.source))}</a>`:""}</p>
+      <p class="note">“Add to calendar” opens the event in your phone’s calendar and marks it Going. ${src?`Source: <a href="${esc(src)}" target="_blank" rel="noopener" data-track="official" data-id="${esc(e.id)}">${esc(hostOf(src))}</a>`:""}</p>
     </div></div></div>`;
   document.body.style.overflow="hidden";
   setTimeout(()=>{ const c=$("#sheetHost .close"); c&&c.focus(); },30);
 }
 function hostOf(u){ try{ return new URL(u).hostname.replace(/^www\./,""); }catch(e){ return u; } }
 function ticketLine(e){ const st=e.ticketStatus||"unknown"; const map={"on sale":"On sale now","selling fast":"Selling fast. Book soon","sold out":"Sold out","not yet on sale":"Not on sale yet","at the door":"Pay at the door","free entry":"No tickets needed","registration":"Free or paid registration required","unknown":"Check the official page"}; return (e.ticketsRequired===false&&st!=="registration"?"No tickets needed":map[st]||st); }
-function closeSheet(){ $("#sheetHost").innerHTML=""; document.body.style.overflow=""; S.tixOpen=null; }
+function closeSheet(){ askStop(); AK.state="idle"; $("#sheetHost").innerHTML=""; document.body.style.overflow=""; S.tixOpen=null; }
 
 /* ---------- ticket details (live check of the seller's page) ---------- */
 const AVAIL={"available":["Available","ok"],"few left":["Few left","hot"],"sold out":["Sold out","sold"],"not yet on sale":["Not on sale yet","wait"],"cancelled":["Cancelled","sold"]};
@@ -397,7 +478,7 @@ function tixHTML(e){
     <div class="tix-sub">Prices${live?"":" (as last saved)"}</div>${priceBlock}${perfBlock}
     ${notes.map(n=>`<div class="note warn">${esc(n)}</div>`).join("")}
     <div class="btnrow">
-      <a class="btn ticket" href="${esc(e.ticketUrl)}" target="_blank" rel="noopener">${icon("ticket")} ${soldOut?"Open seller's page":"Continue to checkout"}</a>
+      <a class="btn ticket" href="${esc(safeHref(e.ticketUrl))}" target="_blank" rel="noopener" data-track="tickets" data-id="${esc(e.id)}">${icon("ticket")} ${soldOut?"Open seller's page":"Continue to checkout"}</a>
       <button class="btn" data-act="tixrefresh" data-id="${esc(e.id)}" ${t.state==="loading"?"disabled":""}>Check again</button>
       <button class="btn" data-act="tixclose" data-id="${esc(e.id)}">Not now</button>
     </div>
@@ -421,7 +502,7 @@ async function loadTix(id, force){
 }
 function openTix(id){
   if(S.tixOpen===id){ S.tixOpen=null; const h=$("#tixPanel"); if(h) h.innerHTML=""; const b=$('#sheetHost [data-act="tix"]'); b&&b.setAttribute("aria-expanded","false"); return; }
-  S.tixOpen=id; const b=$('#sheetHost [data-act="tix"]'); b&&b.setAttribute("aria-expanded","true");
+  S.tixOpen=id; track("tickets", id, {step:"panel"}); const b=$('#sheetHost [data-act="tix"]'); b&&b.setAttribute("aria-expanded","true");
   loadTix(id,false);
   const h=$("#tixPanel"); h&&h.scrollIntoView({behavior:"smooth",block:"nearest"});
 }
@@ -444,6 +525,7 @@ function gcalUrl(e){
 async function addToCalendar(id){
   const e=S.events.find(x=>x.id===id); if(!e) return;
   if(myMark(id)!=="going") setMark(id,"going");
+  track("calendar", id);
   if(window.SO_native.isNative){
     const t=timing(e); window.SO_native.haptic("light");
     const ok=await window.SO_native.addToCalendar({title:e.title, start:t.s.getTime(), end:(t.allDay?addDays(t.e,-1):t.e).getTime(), allDay:t.allDay, location:[e.venue,e.address].filter(Boolean).join(", "), notes:[e.summary, priceLabel(e).t, e.ticketUrl?("Tickets: "+e.ticketUrl):""].filter(Boolean).join("\n"), url:e.url||e.ticketUrl||""});
@@ -457,6 +539,7 @@ async function addToCalendar(id){
 async function setMark(id, state){
   if(!S.uid || !S.household){ toast("Sign in first."); return; }
   const cur=myMark(id); const next = cur===state ? null : state; window.SO_native.haptic(next==="going"?"success":"light");
+  track(next==="going"?"going":next==="interested"?"keen":cur==="going"?"ungoing":"unkeen", id);
   const m=Object.assign({}, S.marks[id]||{}); if(next) m[S.uid]=next; else delete m[S.uid]; S.marks[id]=m; render(); if($("#sheetHost .sheet[data-ev]")) openSheet(id);
   const q = next ? sb.from("picks").upsert({event_id:id, user_id:S.uid, household_id:S.household.id, state:next, updated_at:new Date().toISOString()})
                  : sb.from("picks").delete().eq("event_id",id).eq("user_id",S.uid);
@@ -466,8 +549,7 @@ async function setMark(id, state){
 /* ---------- settings ---------- */
 async function openSettings(){
   const h=S.household||{}; const brief=(S.config.brief||"");
-  let invites=[], friends=[];
-  try{ const r=await sb.from("app_invites").select("code,used_by_household,created_at").order("created_at",{ascending:false}); invites=r.data||[]; }catch(e){}
+  let friends=[];
   try{ const r=await sb.from("friendships").select("household_id,friend_household_id,share_plans"); friends=r.data||[]; }catch(e){}
   const mine=friends.filter(f=>f.household_id===h.id);
   const ids=[...new Set(mine.map(f=>f.friend_household_id))]; let names={};
@@ -476,16 +558,21 @@ async function openSettings(){
   $("#sheetHost").innerHTML=`<div class="scrim" data-close="1"><div class="sheet" role="dialog" aria-modal="true" aria-label="Settings"><div class="inner" style="padding-top:calc(22px + env(safe-area-inset-top,0px))">
     <div style="display:flex;align-items:center;gap:10px"><h2 style="margin-right:auto">Settings</h2><button class="iconbtn" data-close="1" aria-label="Close">${icon("x")}</button></div>
     <div class="form">
+      <div class="setrows">
+        <button class="ig-row" type="button" data-invite-open><span class="rowic">${icon("users")}</span><span><b>Invite people</b><small>Send a link by WhatsApp or email</small></span><span aria-hidden="true">›</span></button>
+        <button class="ig-row" type="button" data-contact="venue"><span class="rowic">${icon("pin")}</span><span><b>Suggest a venue or place</b><small>We'll check it every morning</small></span><span aria-hidden="true">›</span></button>
+        <button class="ig-row" type="button" data-contact="contact"><span class="rowic">${icon("mail")}</span><span><b>Contact us</b><small>Questions, ideas, problems</small></span><span aria-hidden="true">›</span></button>
+        ${S.isAdmin?`<a class="ig-row" href="/admin.html"><span class="rowic">${icon("cal")}</span><span><b>Admin dashboard</b><small>Users, activity, events, messages</small></span><span aria-hidden="true">›</span></a>`:""}
+      </div>
       ${window.SO_install&&!window.SO_install.isStandalone()?`<button class="ig-row" type="button" data-ig-open><img src="/icons/apple-touch-icon.png" alt="" width="40" height="40"><span><b>Install on your phone</b><small>Step-by-step, takes 20 seconds</small></span><span aria-hidden="true">›</span></button>`:""}
       <div><label>Your household</label>
         <div class="hidrow"><input id="hhName" value="${esc(h.name||"")}" aria-label="Household name" style="flex:1;background:var(--surface2);border:1px solid var(--line);border-radius:10px;padding:9px 11px"><button class="chip" id="saveHh" type="button">Save</button></div>
         <p class="desc" style="margin:8px 0 4px">Members: ${members.map(m=>esc(m.display_name||"Member")).join(", ")||"just you"}</p>
-        <p class="desc" style="margin:4px 0">Partner joins with code <b class="mono" style="color:var(--ink)">${esc(h.join_code||"")}</b> <button class="chip" type="button" data-copy="${esc(h.join_code||"")}">Copy</button></p>
+        <p class="desc" style="margin:4px 0">Partner's code: <b class="mono" style="color:var(--ink)">${esc(h.join_code||"")}</b> · or <a href="#" data-invite-open>send them a link</a></p>
       </div>
       <div><label>Friends</label>
-        <p class="desc" style="margin:6px 0 8px">Invite a friend’s household: create a code and send it with the app link. They join as their own household and are connected to you. Your plans stay private unless you switch sharing on per friend.</p>
-        <div class="btnrow"><button class="btn primary" type="button" id="newInvite">Create invite code</button></div>
-        ${invites.filter(i=>!i.used_by_household).map(i=>`<div class="hidrow"><span class="mono">${esc(i.code)}</span><button class="chip" type="button" data-copy="${esc(window.SO_native.origin+"/?invite="+i.code)}">Copy invite link</button></div>`).join("")}
+        <p class="desc" style="margin:6px 0 8px">Friends who join with your link are connected to you. Your plans stay private unless you switch on sharing for that friend.</p>
+        <div class="btnrow"><button class="btn primary" type="button" data-invite-open>${icon("users")} Invite friends</button></div>
         <div class="hidrow" style="margin-top:6px"><input id="friendCode" placeholder="Friend’s friend-code" style="flex:1;background:var(--surface2);border:1px solid var(--line);border-radius:10px;padding:9px 11px"><button class="chip" type="button" id="connectFriend">Connect</button></div>
         <p class="desc" style="margin:4px 0">Your friend-code: <b class="mono" style="color:var(--ink)">${esc(h.friend_code||"")}</b></p>
         ${mine.map(f=>`<div class="hidrow"><span>${esc(names[f.friend_household_id]||"Friend")}</span><label style="display:flex;align-items:center;gap:6px;font:500 13px var(--f-body);text-transform:none;letter-spacing:0;color:var(--ink)"><input type="checkbox" data-share="${esc(f.friend_household_id)}" ${f.share_plans?"checked":""}> Share our plans</label></div>`).join("")||'<p class="desc" style="margin:4px 0">No friends connected yet.</p>'}
@@ -494,9 +581,207 @@ async function openSettings(){
       <p class="note">Daily scan: every morning. ${S.config.scan&&S.config.scan.lastRun?"Last run "+esc(fmtStamp(S.config.scan.lastRun))+". "+esc(S.config.scan.lastNote||""):""}</p>
       <div><label>Hidden events (${Object.keys(S.hidden).length})</label><p class="desc" style="margin:6px 0 8px">Events your household marked “Not for us”. The daily scan learns from this list.</p>${Object.values(S.hidden).sort((a,b)=>(b.at||"").localeCompare(a.at||"")).map(x=>`<div class="hidrow"><span>${esc(x.title||x.eventId)}</span><button type="button" class="chip" data-restore="${esc(x.eventId)}">Restore</button></div>`).join("")||'<p class="desc" style="margin:0">Nothing hidden yet.</p>'}</div>
       <div class="btnrow"><button class="btn" type="button" id="signOut">Sign out</button><button class="btn" type="button" id="leaveHh" style="color:var(--bad)">Delete my account</button></div>
-      <p class="note">Privacy: we store your email, name, household and picks to run the app. Nothing is shared outside your household unless you switch on sharing for a friend. “Delete my account” removes your membership and picks.</p>
+      <p class="note">Privacy: we store your email, name, household and picks to run the app. Nothing is shared outside your household unless you switch on sharing for a friend. “Delete my account” permanently removes your login, email, picks and activity.</p>
     </div></div></div></div>`;
   document.body.style.overflow="hidden";
+}
+
+/* ---------- sharing an event ---------- */
+function origin(){ return window.SO_native.origin; }
+function eventLink(e){ return origin()+"/e/"+encodeURIComponent(e.id); }
+async function shareEvent(id, how){
+  const e=S.events.find(x=>x.id===id); if(!e) return;
+  const url=eventLink(e), where=[e.venue, e.city&&!(e.venue||"").includes(e.city)?e.city:""].filter(Boolean).join(", ");
+  const line=`${e.title}\n${whenText(e)}${where?" · "+where:""}\n${priceLabel(e).t==="FREE"?"Free":priceLabel(e).t}`;
+  track("share", id, {via:how});
+  if(how==="wa"){ const t=`${line}\n\nWant to go? ${url}`; if(window.SO_native.isNative && await window.SO_native.share({title:e.title,text:t})) return; window.open("https://wa.me/?text="+encodeURIComponent(t), "_blank", "noopener"); return; }
+  if(how==="mail"){ location.href="mailto:?subject="+encodeURIComponent("Want to go? "+e.title)+"&body="+encodeURIComponent(`${line}\n\n${e.summary||""}\n\nAll the details: ${url}\n\nFound on Swiss Outings, concerts, carnivals and family days out across Switzerland.`); return; }
+  if(window.SO_native.isNative){ window.SO_native.share({title:e.title, text:line, url}); return; }
+  if(navigator.share){ try{ await navigator.share({title:e.title, text:line, url}); }catch(x){} return; }
+  copyPlain(url, "Link copied. Paste it anywhere.");
+}
+function copyPlain(t, msg){ try{ navigator.clipboard.writeText(t).then(()=>toast(msg||"Copied"),()=>toast(t)); }catch(x){ toast(t); } }
+
+/* ---------- invite partner / friends ---------- */
+function inviteLinks(){ const h=S.household||{}; return { partner: h.join_code?origin()+"/?join="+h.join_code:"", friend: h.friend_code?origin()+"/?invite="+h.friend_code:"" }; }
+function inviteText(who){
+  const L=inviteLinks(), me=(S.members[S.uid]&&S.members[S.uid].display_name)||"";
+  return who==="partner"
+    ? {subject:"Join our household on Swiss Outings", text:`Join our household on Swiss Outings so we can plan outings together. Tap the link, create your account, and we'll see each other's ♥ keen and ✓ going picks.\n\n${L.partner}`}
+    : {subject:(me?me+" invited you to ":"Join me on ")+"Swiss Outings", text:`I use Swiss Outings to find concerts, carnivals, cow parades and family days out around Zurich. It's free. Join me and we can share plans:\n\n${L.friend}`};
+}
+async function sendInvite(how, who){
+  const m=inviteText(who), link=inviteLinks()[who]; if(!link){ toast("One moment, still loading your codes."); return; }
+  track("invite", null, {via:how, who});
+  if(how==="wa"){ if(window.SO_native.isNative && await window.SO_native.share({title:m.subject,text:m.text})) return; window.open("https://wa.me/?text="+encodeURIComponent(m.text),"_blank","noopener"); return; }
+  if(how==="mail"){ location.href="mailto:?subject="+encodeURIComponent(m.subject)+"&body="+encodeURIComponent(m.text); return; }
+  if(how==="more" && (window.SO_native.isNative||navigator.share)){ try{ window.SO_native.isNative ? await window.SO_native.share({title:m.subject,text:m.text}) : await navigator.share({title:m.subject,text:m.text}); }catch(x){} return; }
+  copyPlain(link, "Invite link copied");
+}
+function sendRow(who){ return `<div class="sendrow">
+  <button class="btn wa" type="button" data-send="wa" data-who="${who}">${icon("wa")} WhatsApp</button>
+  <button class="btn" type="button" data-send="mail" data-who="${who}">${icon("mail")} Email</button>
+  <button class="btn" type="button" data-send="${navigator.share||window.SO_native.isNative?"more":"copy"}" data-who="${who}">${icon(navigator.share||window.SO_native.isNative?"share":"link")} ${navigator.share||window.SO_native.isNative?"More":"Copy link"}</button></div>`; }
+function sheetShell(label, inner){
+  $("#sheetHost").innerHTML=`<div class="scrim" data-close="1"><div class="sheet small" role="dialog" aria-modal="true" aria-label="${esc(label)}"><div class="inner" style="padding-top:calc(22px + env(safe-area-inset-top,0px))">
+    <div style="display:flex;align-items:center;gap:10px"><h2 style="margin-right:auto">${esc(label)}</h2><button class="iconbtn" data-close="1" aria-label="Close">${icon("x")}</button></div>${inner}</div></div></div>`;
+  document.body.style.overflow="hidden";
+}
+function openInvite(){
+  sheetShell("Invite people", `
+    <section class="invcard"><div class="invhead">${icon("users")}<div><h3>Friends &amp; family</h3><p>They get their own free account and are connected to you. You choose later whether to share your plans with them.</p></div></div>${sendRow("friend")}</section>
+    <section class="invcard"><div class="invhead">${icon("heart")}<div><h3>Your partner</h3><p>They join <b>your household</b>, so you both see each other's ♥ keen and ✓ going picks right away.</p></div></div>${sendRow("partner")}</section>
+    <p class="note">Each link works for as many people as you like.</p>`);
+}
+
+/* ---------- contact us / suggest a venue ---------- */
+function openContact(kind, msg){
+  const me=S.members[S.uid]||{};
+  sheetShell(kind==="venue"?"Suggest a place":"Contact us", `
+    <form id="contactForm" class="form" novalidate>
+      <p class="desc" style="margin:0">${kind==="venue"?"Tell us the venues, villages, clubs or websites you'd like us to check every morning. We read every message.":"Questions, ideas or something not working? Write to us. We'll reply by email."}</p>
+      <div><label for="cKind">About</label><select id="cKind" class="chip" style="width:100%;padding:10px 12px">
+        <option value="venue" ${kind==="venue"?"selected":""}>Suggest a venue, place or website to cover</option>
+        <option value="contact" ${kind==="contact"?"selected":""}>Question or feedback</option>
+        <option value="bug" ${kind==="bug"?"selected":""}>Something isn't working</option></select></div>
+      <div><label for="cName">Your name</label><input id="cName" class="inp" autocomplete="name" value="${esc(me.display_name||"")}"></div>
+      <div><label for="cEmail">Your email (for our reply)</label><input id="cEmail" class="inp" type="email" autocomplete="email" inputmode="email" value="${esc(S.email||"")}"></div>
+      <div><label for="cBody">Message</label><textarea id="cBody" rows="5" placeholder="${kind==="venue"?"e.g. Kulturhaus Helferei in Zurich, or the Uster Chilbi website":"Write your message"}"></textarea></div>
+      <input type="text" id="cHp" tabindex="-1" autocomplete="off" aria-hidden="true" style="position:absolute;left:-9999px">
+      ${msg?`<p class="ob-msg err" role="alert">${esc(msg)}</p>`:""}
+      <div class="btnrow"><button class="btn primary" type="submit">Send message</button></div>
+    </form>`);
+  $("#cBody").focus();
+  $("#contactForm").onsubmit=async ev=>{
+    ev.preventDefault(); if($("#cHp").value) return;
+    const body=$("#cBody").value.trim(), kindV=$("#cKind").value, name=$("#cName").value.trim(), email=$("#cEmail").value.trim();
+    if(body.length<2) return openContact(kindV, "Please write a message.");
+    if(email && !/^\S+@\S+\.\S+$/.test(email)) return openContact(kindV, "That email address doesn't look right.");
+    const b=ev.target.querySelector("button[type=submit]"); b.disabled=true; b.textContent="Sending…";
+    const {data:id, error}=await sb.rpc("submit_message",{p_kind:kindV, p_name:name, p_email:email, p_body:body});
+    if(error){ b.disabled=false; b.textContent="Send message"; toast(error.message); return; }
+    track("contact", null, {kind:kindV});
+    try{ fetch(window.SO_native.api("/api/contact"),{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({id, kind:kindV, name, email, body})}); }catch(x){}
+    sheetShell("Thank you!", `<div class="thanks"><p>Your message is on its way. ${kindV==="venue"?"We'll look at those places and add them to the morning search.":"We'll get back to you by email."}</p><button class="btn primary" type="button" data-close="1">Done</button></div>`);
+  };
+}
+
+/* ---------- "an app is coming" + home screen tips ---------- */
+function openTips(){
+  const IG=window.SO_install;
+  sheetShell("Welcome to Swiss Outings", `
+    <section class="tipcard"><h3>📱 A proper app is on its way</h3><p>We're building Swiss Outings for the App Store and Google Play. Until then, put it on your home screen: it opens full-screen and feels just like an app.</p>
+      ${IG&&!IG.isStandalone()?IG.stepsHTML():`<p class="note">You're already using it from your home screen. 👍</p>`}</section>
+    <section class="tipcard"><h3>📍 Missing a place you love?</h3><p>Tell us which venues, villages, clubs or websites to cover, and we'll check them every morning.</p>
+      <button class="btn" type="button" data-contact="venue">Suggest a place</button></section>
+    <section class="tipcard"><h3>👋 Better together</h3><p>Invite your partner and friends to see who's keen on what.</p>
+      <button class="btn" type="button" data-invite-open>Invite people</button></section>
+    <div class="btnrow"><button class="btn primary" type="button" data-close="1">Got it, show me events</button></div>`);
+  IG && IG.wire($("#sheetHost")); track("install_help", null, {from:"tips"});
+  try{ localStorage.setItem("so.tipsSeen","1"); }catch(x){}
+}
+function maybeShowTips(){ let seen=false; try{ seen=localStorage.getItem("so.tipsSeen")==="1"; }catch(x){} if(!seen && !$("#sheetHost").innerHTML && document.getElementById("gate").hidden) setTimeout(()=>{ if(!$("#sheetHost").innerHTML) openTips(); }, 1200); }
+
+/* ---------- ask by voice or in your own words ---------- */
+function askBar(){
+  if(S.askSummary) return `<div class="askbar on"><button type="button" class="askbtn" data-ask-open>${icon("mic")}<span><small>Showing</small>${esc(S.askSummary)}</span></button><button type="button" class="askx" data-ask-clear aria-label="Clear this search">${icon("x")}</button></div>`;
+  return `<div class="askbar"><button type="button" class="askbtn" data-ask-open>${icon("mic")}<span><small>Ask Swiss Outings</small>“Something for the kids this weekend…”</span></button></div>`;
+}
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+const AK={rec:null, media:null, chunks:[], timer:null, state:"idle"};
+function askStop(){ try{ AK.rec&&AK.rec.abort(); }catch(x){} try{ if(AK.media&&AK.media.state!=="inactive") AK.media.stop(); }catch(x){} clearTimeout(AK.timer); AK.rec=null; }
+function openAsk(msg){
+  sheetShell("What are you in the mood for?", `
+    <div class="askwrap">
+      <button type="button" class="micbig" id="micBtn" aria-label="Tap and speak">${icon("mic")}</button>
+      <p class="asklive" id="askLive" aria-live="polite">${esc(msg||"Tap the microphone and say what you're looking for.")}</p>
+      <form id="askForm" class="askform"><input id="askText" class="inp" placeholder="…or type it here" autocomplete="off" enterkeyhint="search"><button class="btn primary" type="submit">Find</button></form>
+      <div class="askex"><span>Try:</span>${["Kids stuff this weekend near Zurich","A jazz or soul concert for a date night","Free outdoor things in November","Christmas markets around the lake"].map(x=>`<button type="button" class="chip" data-ask-ex="${esc(x)}">${esc(x)}</button>`).join("")}</div>
+    </div>`);
+  const live=$("#askLive"), mic=$("#micBtn");
+  $("#askForm").onsubmit=ev=>{ ev.preventDefault(); const t=$("#askText").value.trim(); if(t) runAsk({text:t}); };
+  document.querySelectorAll("[data-ask-ex]").forEach(b=>b.onclick=()=>runAsk({text:b.dataset.askEx}));
+  mic.onclick=()=>{
+    if(AK.state==="listening"){ // tap again = done
+      if(AK.rec) AK.rec.stop(); else if(AK.media&&AK.media.state==="recording") AK.media.stop(); return; }
+    askStop(); AK.state="listening"; mic.classList.add("on"); live.textContent="Listening…";
+    if(SR){
+      const r=new SR(); AK.rec=r; r.lang=(navigator.language||"en-GB").startsWith("de")?"de-CH":"en-GB"; r.interimResults=true; r.maxAlternatives=1; let final="";
+      r.onresult=ev=>{ let t=""; for(const res of ev.results){ t+=res[0].transcript; } final=t; live.textContent="“"+t+"”"; };
+      r.onerror=ev=>{ AK.state="idle"; mic.classList.remove("on"); live.textContent= ev.error==="not-allowed"||ev.error==="service-not-allowed" ? "Microphone access is blocked. Allow it in your browser settings, or type below." : "Didn't catch that. Tap and try again, or type below."; };
+      r.onend=()=>{ if(AK.state!=="listening") return; AK.state="idle"; mic.classList.remove("on"); if(final.trim()) runAsk({text:final.trim()}); else live.textContent="Didn't catch that. Tap and try again, or type below."; };
+      try{ r.start(); }catch(x){ AK.state="idle"; mic.classList.remove("on"); live.textContent="Couldn't start the microphone. Type below instead."; }
+      return;
+    }
+    if(navigator.mediaDevices && window.MediaRecorder){
+      navigator.mediaDevices.getUserMedia({audio:true}).then(stream=>{
+        const mr=new MediaRecorder(stream); AK.media=mr; AK.chunks=[];
+        mr.ondataavailable=e=>{ if(e.data.size) AK.chunks.push(e.data); };
+        mr.onstop=()=>{ stream.getTracks().forEach(t=>t.stop()); AK.state="idle"; mic.classList.remove("on"); const blob=new Blob(AK.chunks,{type:mr.mimeType||"audio/webm"}); if(blob.size<1500){ live.textContent="Didn't catch that. Tap and try again."; return; }
+          const fr=new FileReader(); fr.onload=()=>runAsk({audio:String(fr.result).split(",")[1], mime:blob.type}); fr.readAsDataURL(blob); };
+        mr.start(); live.textContent="Listening… tap again when you're done."; AK.timer=setTimeout(()=>{ if(mr.state==="recording") mr.stop(); },12000);
+      }).catch(()=>{ AK.state="idle"; mic.classList.remove("on"); live.textContent="Microphone access is blocked. Allow it in your browser settings, or type below."; });
+      return;
+    }
+    AK.state="idle"; mic.classList.remove("on"); live.textContent="Voice isn't supported in this browser. Type below instead."; $("#askText").focus();
+  };
+}
+async function runAsk(input){
+  const live=$("#askLive"); if(live) live.innerHTML=`<span class="spin"></span> Finding events${input.text?" for “"+esc(input.text)+"”":""}…`;
+  let res=null;
+  try{
+    const {data}=await sb.auth.getSession(); const tok=data.session&&data.session.access_token;
+    const r=await fetch(window.SO_native.api("/api/ask"),{method:"POST",headers:{"Content-Type":"application/json",...(tok?{Authorization:"Bearer "+tok}:{})},body:JSON.stringify(input)});
+    if(r.ok) res=await r.json();
+  }catch(x){}
+  if(!res){
+    if(!input.text){ openAsk("Voice search isn't switched on yet. Type what you're looking for below."); return; }
+    res={transcript:input.text, filters:localParse(input.text)};
+  }
+  applyAsk(res.filters||{}, res.transcript||input.text||"");
+}
+function applyAsk(f, said){
+  resetFilters();
+  if(f.audience) S.aud=f.audience;
+  (f.categories||[]).forEach(c=>CATS[c]&&S.cats.add(c));
+  (f.toggles||[]).forEach(t=>S.toggles.add(t));
+  if(f.region) S.region=f.region;
+  S.from=f.from||null; S.to=f.to||null;
+  if(f.maxPrice!=null) S.maxPrice=f.maxPrice;
+  S.kw=f.keywords||[];
+  S.askSummary=f.summary||said;
+  const r=$("#region"); if(r) r.value=S.region;
+  buildFilters();
+  let n=filtered().length;
+  if(!n && S.kw.length){ S.kw=[]; n=filtered().length; }   // keywords too narrow: keep the other filters
+  track("search", null, {voice:true, q:String(said).slice(0,140), results:n, filters:f});
+  closeSheet(); if(S.view==="ours") S.view="discover"; render(); window.scrollTo({top:0});
+  toast(n?`${n} ${n===1?"event":"events"} · ${S.askSummary}`:"Nothing matches that yet. Try something broader.");
+}
+// Built-in fallback when the AI search isn't available.
+function localParse(text){
+  const t=" "+text.toLowerCase()+" ", has=re=>re.test(t), f={categories:[],toggles:[],keywords:[]};
+  if(has(/\b(kids?|children|child|toddler|kinder)\b/)) f.audience="Kids"; else if(has(/\b(family|families|whole family|familie)\b/)) f.audience="Family"; else if(has(/\b(date|romantic|adults?|grown.?ups?|couple|parents)\b/)) f.audience="Parents";
+  const C={Music:/\b(concert|gig|music|band|live music|konzert|jazz|soul|folk|indie|rock|80s|90s)\b/,Festival:/\b(festival|carnival|chilbi|fasnacht|fair|kilbi)\b/,Film:/\b(film|cinema|movie|kino)\b/,Outdoors:/\b(hike|hiking|walk|outdoors?|bike|nature)\b/,Sport:/\b(football|soccer|hockey|match|game|sport|fcz|zsc|gc)\b/,Food:/\b(food|eat|market|wine|beer|tasting)\b/,Seasonal:/\b(christmas|advent|xmas|lantern|räben|samichlaus|halloween|easter)\b/,Culture:/\b(museum|exhibition|theatre|theater|art|opera|ballet|culture)\b/};
+  for(const [k,re] of Object.entries(C)) if(has(re)) f.categories.push(k);
+  if(f.categories.includes("Seasonal") && has(/\bmarket/)) f.categories=f.categories.filter(c=>c!=="Food");
+  if(has(/\bfree\b|gratis/)) f.toggles.push("free"); else if(has(/\b(cheap|budget|affordable|not too expensive|inexpensive)\b/)) f.toggles.push("cheap");
+  if(has(/\benglish\b/)) f.toggles.push("english");
+  if(has(/\b(outside|outdoor)\b/)) f.toggles.push("outdoor");
+  if(has(/\b(near|nearby|close|around here|lake|küsnacht|kusnacht|meilen|erlenbach|zollikon|gold coast|zurich|zürich)\b/)) f.region="near";
+  const m=t.match(/(?:under|below|max|less than)\s*(?:chf|fr\.?)?\s*(\d{1,4})/); if(m) f.maxPrice=+m[1];
+  ["jazz","soul","folk","indie","80s","90s","rock","classical","opera","hockey","christmas market","zoo","circus","lantern","cow"].forEach(k=>{ if(t.includes(k)) f.keywords.push(k); });
+  const d=new Date(TODAY), day=d.getDay(); const iso=x=>ymd(x);
+  if(has(/\btoday|tonight\b/)){ f.from=f.to=iso(d); }
+  else if(has(/\btomorrow\b/)){ f.from=f.to=iso(addDays(d,1)); }
+  else if(has(/\bnext weekend\b/)){ const sat=addDays(d,((6-day+7)%7)+7); f.from=iso(addDays(sat,-1)); f.to=iso(addDays(sat,1)); }
+  else if(has(/\b(this )?weekend\b/)){ const [a,b]=weekendRange(); f.from=iso(a); f.to=iso(b); }
+  else if(has(/\bnext week\b/)){ const mon=addDays(d,((8-day)%7)||7); f.from=iso(mon); f.to=iso(addDays(mon,6)); }
+  else if(has(/\bthis week\b/)){ f.from=iso(d); f.to=iso(addDays(d,(7-day)%7)); }
+  else { MONL.forEach((mn,i)=>{ if(t.includes(mn.toLowerCase())){ const y=i<d.getMonth()?d.getFullYear()+1:d.getFullYear(); f.from=iso(new Date(y,i,1)); f.to=iso(new Date(y,i+1,0)); } }); }
+  const bits=[f.audience==="Kids"?"For kids":f.audience==="Family"?"For the family":f.audience==="Parents"?"For grown-ups":"", f.categories.join(" & "), f.toggles.includes("free")?"free":"", f.region?"near Zurich":"", f.from?(f.from===f.to?f.from:"from "+f.from):""].filter(Boolean);
+  f.summary=bits.join(" · ")||text;
+  return f;
 }
 
 /* ---------- toast ---------- */
@@ -506,14 +791,15 @@ async function hideEvent(id){
   S.hidden[id]={eventId:id, at:new Date().toISOString(), title:e.title};
   if($("#sheetHost .sheet[data-ev]")) closeSheet();
   render();
-  toast("Hidden: "+e.title, ()=>unhideEvent(id));
+  toast("Hidden: "+e.title, ()=>unhideEvent(id)); track("hide", id);
   const { error } = await sb.from("hidden").upsert({household_id:S.household.id, event_id:id, by_user:S.uid, title:e.title, category:e.category, tags:e.tags||[]});
   if(error) toast("Couldn't save that: "+error.message);
 }
-async function unhideEvent(id){ delete S.hidden[id]; render(); if($("#sheetHost [aria-label=Settings]")) openSettings(); await sb.from("hidden").delete().eq("household_id",S.household.id).eq("event_id",id); }
+async function unhideEvent(id){ track("unhide", id); delete S.hidden[id]; render(); if($("#sheetHost [aria-label=Settings]")) openSettings(); await sb.from("hidden").delete().eq("household_id",S.household.id).eq("event_id",id); }
 
 /* ---------- filter UI ---------- */
-function activeCount(){ return (S.aud!=="all"?1:0)+S.cats.size+S.toggles.size+(S.when!=="all"?1:0)+(S.region!=="all"?1:0)+(S.q?1:0); }
+function activeCount(){ return (S.aud!=="all"?1:0)+S.cats.size+S.toggles.size+(S.when!=="all"?1:0)+(S.region!=="all"?1:0)+(S.q?1:0)+(S.from||S.to?1:0)+(S.maxPrice!=null?1:0)+(S.kw&&S.kw.length?1:0); }
+function resetFilters(){ S.aud="all"; S.cats.clear(); S.toggles.clear(); S.when="all"; S.region="all"; S.q=""; S.from=S.to=null; S.maxPrice=null; S.kw=[]; S.askSummary=null; const q=$("#q"); if(q) q.value=""; const w=$("#when"); if(w) w.value="all"; const r=$("#region"); if(r) r.value="all"; buildFilters(); }
 function updCount(){ const n=activeCount(), el=$("#fcount"); if(el){ el.hidden=!n; el.textContent=n; } const b=$("#closeFilters"); if(b) b.textContent="Show "+filtered().length+" events"; }
 function openFilters(on){ $("#filters").classList.toggle("open",on); $("#fscrim").classList.toggle("on",on); $("header.top").style.zIndex=on?"47":""; document.body.style.overflow=on?"hidden":""; if(on) updCount(); }
 function buildFilters(){
@@ -526,7 +812,13 @@ function buildFilters(){
 document.addEventListener("click", ev=>{
   const t=ev.target;
   const act=t.closest("[data-act]");
-  if(act){ ev.stopPropagation(); const id=act.dataset.id; if(act.dataset.act==="skip") hideEvent(id); else if(act.dataset.act==="int") setMark(id,"interested"); else if(act.dataset.act==="go") setMark(id,"going"); else if(act.dataset.act==="cal") addToCalendar(id); else if(act.dataset.act==="tix") openTix(id); else if(act.dataset.act==="tixrefresh") loadTix(id,true); else if(act.dataset.act==="tixclose"){ if(S.tixOpen===id) openTix(id); } return; }
+  if(act){ ev.stopPropagation(); const id=act.dataset.id; if(act.dataset.act==="listen"){ listen(id); return; } if(act.dataset.act==="skip") hideEvent(id); else if(act.dataset.act==="int") setMark(id,"interested"); else if(act.dataset.act==="go") setMark(id,"going"); else if(act.dataset.act==="cal") addToCalendar(id); else if(act.dataset.act==="tix") openTix(id); else if(act.dataset.act==="tixrefresh") loadTix(id,true); else if(act.dataset.act==="tixclose"){ if(S.tixOpen===id) openTix(id); } return; }
+  const tr=t.closest("[data-track]"); if(tr){ track(tr.dataset.track, tr.dataset.id||null, tr.dataset.track==="tickets"?{step:"checkout"}:{}); }
+  const sh=t.closest("[data-sendev]"); if(sh){ ev.stopPropagation(); shareEvent(sh.dataset.id, sh.dataset.sendev); return; }
+  const sv=t.closest("[data-send]"); if(sv){ sendInvite(sv.dataset.send, sv.dataset.who); return; }
+  if(t.closest("[data-invite-open]")){ ev.preventDefault(); openInvite(); return; }
+  const co=t.closest("[data-contact]"); if(co){ ev.preventDefault(); openContact(co.dataset.contact||"contact"); return; }
+  if(t.closest("[data-tips-open]")){ ev.preventDefault(); openTips(); return; }
   const v=t.closest(".seg button"); if(v){ S.view=v.dataset.view; try{localStorage.setItem("so.view",S.view);}catch(e){} render(); window.scrollTo({top:0}); return; }
   const a=t.closest("[data-aud]"); if(a){ S.aud=a.dataset.aud; buildFilters(); render(); return; }
   const g=t.closest("[data-tg]"); if(g){ const k=g.dataset.tg; if(S.toggles.has(k)) S.toggles.delete(k); else { S.toggles.add(k); if(k==="gem") S.toggles.delete("big"); if(k==="big") S.toggles.delete("gem"); } buildFilters(); render(); return; }
@@ -539,16 +831,18 @@ document.addEventListener("click", ev=>{
   if(t.closest("#openSettings")){ openSettings(); return; }
   if(t.closest("#openFilters")){ openFilters(true); return; }
   if(t.id==="closeFilters"||t.id==="fscrim"){ openFilters(false); window.scrollTo({top:0}); return; }
-  if(t.id==="clearFilters"){ S.aud="all"; S.cats.clear(); S.toggles.clear(); S.when="all"; S.region="all"; S.q=""; $("#q").value=""; $("#when").value="all"; $("#region").value="all"; buildFilters(); render(); return; }
+  if(t.id==="clearFilters"||t.closest("[data-ask-clear]")){ resetFilters(); render(); return; }
+  if(t.closest("[data-ask-open]")){ openAsk(); return; }
   const wt=t.closest("[data-who]"); if(wt){ S.whoTab=wt.dataset.who; render(); return; }
   const cp=t.closest("[data-copy]"); if(cp){ copyText(cp.dataset.copy); return; }
   if(t.id==="newInvite"){ (async()=>{ const {error}=await sb.rpc("create_invite"); if(error) toast(error.message); else openSettings(); })(); return; }
-  if(t.id==="connectFriend"){ (async()=>{ const {error}=await sb.rpc("connect_friend",{p_code:$("#friendCode").value}); if(error) toast(error.message); else { toast("Connected"); openSettings(); } })(); return; }
+  if(t.id==="connectFriend"){ (async()=>{ const {data,error}=await sb.rpc("connect_friend",{p_code:$("#friendCode").value}); if(error) toast(error.message); else if(!data) toast("We couldn't find that friend code. Check it and try again."); else { toast("Connected"); openSettings(); } })(); return; }
   if(t.id==="saveHh"){ (async()=>{ const {error}=await sb.from("households").update({name:$("#hhName").value.trim()}).eq("id",S.household.id); toast(error?error.message:"Saved"); if(!error) S.household.name=$("#hhName").value.trim(); })(); return; }
   if(t.id==="saveBrief"){ (async()=>{ const brief=$("#brief").value.trim(); const {error}=await sb.from("app_config").upsert({key:"brief", value:brief, updated_at:new Date().toISOString()}); if(!error) S.config.brief=brief; toast(error?error.message:"Saved. The next scan uses the new brief."); })(); return; }
   if(t.id==="signOut"){ (async()=>{ await sb.auth.signOut(); location.reload(); })(); return; }
-  if(t.id==="leaveHh"){ if(t.dataset.sure!=="1"){ t.dataset.sure="1"; t.textContent="Tap again to delete"; return; } (async()=>{ await sb.from("picks").delete().eq("user_id",S.uid); await sb.from("members").delete().eq("user_id",S.uid); await sb.auth.signOut(); location.reload(); })(); return; }
-  if(t.dataset && t.dataset.close || (t.closest("[data-close]") && t.closest("button"))){ closeSheet(); return; }
+  if(t.id==="leaveHh"){ if(t.dataset.sure!=="1"){ t.dataset.sure="1"; t.textContent="Tap again to delete"; return; } (async()=>{ const {error}=await sb.rpc("delete_my_account"); if(error){ toast("Couldn't delete: "+error.message); return; } try{ localStorage.clear(); }catch(x){} await sb.auth.signOut(); location.reload(); })(); return; }
+  // close only on the backdrop itself or an explicit close button (not on every button inside a sheet)
+  if((t.dataset && t.dataset.close) || t.closest("button[data-close]")){ closeSheet(); return; }
 });
 document.addEventListener("keydown", ev=>{
   if(ev.key==="Escape"){ if($("#sheetHost").innerHTML) closeSheet(); else openFilters(false); }
@@ -556,11 +850,11 @@ document.addEventListener("keydown", ev=>{
 });
 document.addEventListener("change", ev=>{ const s=ev.target.closest&&ev.target.closest("[data-share]"); if(s){ (async()=>{ const {error}=await sb.from("friendships").update({share_plans:s.checked}).eq("household_id",S.household.id).eq("friend_household_id",s.dataset.share); toast(error?error.message:(s.checked?"Now sharing your plans":"Stopped sharing")); })(); } });
 function copyText(t){ if(window.SO_native.isNative && /^https?:/.test(t)){ window.SO_native.share({title:"Swiss Outings", text:"Join us on Swiss Outings", url:t}); return; } try{ navigator.clipboard.writeText(t).then(()=>toast("Copied"),()=>toast(t)); }catch(e){ toast(t); } }
-let qt; $("#q").addEventListener("input", e=>{ clearTimeout(qt); qt=setTimeout(()=>{ S.q=e.target.value.trim().toLowerCase(); render(); },150); });
+let qt, qlog; $("#q").addEventListener("input", e=>{ clearTimeout(qt); qt=setTimeout(()=>{ S.q=e.target.value.trim().toLowerCase(); render(); },150); clearTimeout(qlog); qlog=setTimeout(()=>{ if(S.q.length>=3) track("search", null, {q:S.q.slice(0,60), results:filtered().length}); },1800); });
 $("#when").addEventListener("change", e=>{ S.when=e.target.value; render(); });
 $("#region").addEventListener("change", e=>{ S.region=e.target.value; render(); });
 
 /* ---------- boot ---------- */
 buildFilters(); render();
-window.__app={S,render,buildFilters,parseD,isPast,poster,esc,fmtStamp,toast,isNew,openSettings};
+window.__app={S,render,buildFilters,parseD,isPast,poster,esc,fmtStamp,toast,isNew,openSettings,openSheet,track,flushLog,maybeShowTips,openTips,openInvite,openContact};
 })();
