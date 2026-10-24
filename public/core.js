@@ -261,21 +261,25 @@ function icon(n){
     users:'<circle cx="9" cy="8" r="3.2"/><path d="M3 20a6 6 0 0 1 12 0"/><path d="M16 4.5a3.2 3.2 0 0 1 0 6.4M18 14a6 6 0 0 1 3 6"/>',
     mic:'<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21M8.5 21h7"/>',
     calq:'<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/><path d="m9 15 2 2 4-4"/>',
+    sliders:'<path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/>',
+    gear:'<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>',
+    phone:'<rect x="7" y="2.5" width="10" height="19" rx="2.5"/><path d="M11 18.5h2"/>',
     help:'<circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.4 2.3c-.6.3-.9.8-.9 1.4v.6"/><circle cx="12" cy="17" r=".6" fill="currentColor"/>'};
   const fill = n==="heart"?"currentColor":"none";
   return `<svg viewBox="0 0 24 24" fill="${fill}" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${P[n]}</svg>`;
 }
-function actionsHTML(e){
-  const m=myMark(e.id), inv=S.invites[e.id];
-  return `<div class="actions">
-    <button class="act int ${m==="interested"?"on":""}" data-act="int" data-id="${esc(e.id)}" aria-pressed="${m==="interested"}" title="Interested">${icon("heart")}<span>Keen</span></button>
-    <button class="act go ${m==="going"?"on":""}" data-act="go" data-id="${esc(e.id)}" aria-pressed="${m==="going"}" title="We're going">${icon("check")}<span>Going</span></button>
-    <button class="act inv" data-act="cal" data-id="${esc(e.id)}" title="Add to your calendar">${icon("cal")}<span>Add</span></button>
-    <button class="act skip" data-act="skip" data-id="${esc(e.id)}" title="Not for us: hide this event" aria-label="Not for us">${icon("x")}</button>
+function actionsHTML(e){ // compact icon toggles on cards
+  const m=myMark(e.id), id=esc(e.id), t=esc(e.title);
+  return `<div class="cacts">
+    <button class="ico skip" data-act="skip" data-id="${id}" title="Not for us" aria-label="Not for us: hide ${t}">${icon("x")}</button>
+    <button class="ico int ${m==="interested"?"on":""}" data-act="int" data-id="${id}" aria-pressed="${m==="interested"}" title="Keen" aria-label="Keen on ${t}">${icon("heart")}</button>
+    <button class="ico go ${m==="going"?"on":""}" data-act="go" data-id="${id}" aria-pressed="${m==="going"}" title="Going" aria-label="Going to ${t}">${icon("check")}</button>
   </div>`;
 }
+function audDots(e){ return (e.audience||[]).map(a=>`<span class="adot ${audClass(a)}">${esc(a)}</span>`).join(""); }
+function placeText(e){ return (e.venue||"")+(e.city&&!(e.venue||"").includes(e.city)?(e.venue?", ":"")+e.city:""); }
 function cardHTML(e){
-  const id=++uidSeq; const aud=(e.audience||[]);
+  const id=++uidSeq;
   return `<article class="card" data-open="${esc(e.id)}" tabindex="0" aria-label="${esc(e.title)}">
     <div class="art">${poster(e,{uid:id})}
       <div class="tl"><span class="tag">${esc(e.category)}</span>${e.scale==="gem"?'<span class="tag gem">Gem</span>':""}</div>
@@ -285,12 +289,8 @@ function cardHTML(e){
     <div class="body">
       <h3 class="title">${esc(e.title)}</h3>
       ${e.summary?`<p class="blurb">${esc(e.summary)}</p>`:""}
-      <div class="meta">
-        <div class="row"><span class="mono">${esc(whenText(e))}</span></div>
-        <div class="row"><span>${esc(e.venue||"")}${e.city&&!(e.venue||"").includes(e.city)?", "+esc(e.city):""}</span></div>
-      </div>
-      <div class="aud">${aud.map(a=>`<span class="pill ${audClass(a)}">${esc(a)}</span>`).join("")}</div>
-      ${actionsHTML(e)}
+      <p class="cmeta"><span class="mono">${esc(whenText(e))}</span><span>${esc(placeText(e))}</span></p>
+      <div class="cfoot"><div class="auds">${audDots(e)}</div>${actionsHTML(e)}</div>
     </div>
   </article>`;
 }
@@ -315,8 +315,8 @@ function render(){
   updCount();
 }
 function statusLine(){
-  const m=S.meta||{}; const up=S.events.filter(e=>!isPast(e));
-  return `<div class="status-line"><span><b>${up.length}</b> upcoming</span><span><b>${up.filter(e=>e.free).length}</b> free</span><span><b>${up.filter(e=>e.scale==="gem").length}</b> hidden gems</span><span>Updated <b>${esc(m.lastRun?fmtStamp(m.lastRun):"—")}</b></span>${up.some(isNew)?`<button type="button" class="newchip" data-tg="newonly" aria-pressed="${S.toggles.has("newonly")}">✦ ${up.filter(isNew).length} new this week</button>`:""}</div>${window.SO_install?window.SO_install.bannerHTML():""}`;
+  const m=S.meta||{}; const up=S.events.filter(e=>!isPast(e)); const nw=up.filter(isNew).length;
+  return `<div class="status-line"><span><b>${up.length}</b> upcoming · updated ${esc(m.lastRun?fmtStamp(m.lastRun):"—")}</span>${nw?`<button type="button" class="newchip" data-tg="newonly" aria-pressed="${S.toggles.has("newonly")}">✦ ${nw} new this week</button>`:""}</div>${window.SO_install?window.SO_install.bannerHTML():""}`;
 }
 function fmtStamp(s){ const d=new Date(s); if(isNaN(d)) return s; const k=Math.round((dayOnly(d)-dayOnly(new Date()))/864e5); const day=k===0?"today":k===-1?"yesterday":DOW[d.getDay()]+" "+d.getDate()+" "+MON[d.getMonth()]; return day+" "+hhmm(d); }
 function weekendRange(){
@@ -384,68 +384,85 @@ function oursView(){
 }
 
 /* ---------- detail sheet ---------- */
+function whoLine(id){
+  const ps=peopleFor(id), fr=S.friendPicks[id]||[];
+  const bits=ps.map(([u,st])=>`${esc(u===S.uid?"You":personName(u))} ${st==="going"?"✓ going":"♥ keen"}`).concat(fr.map(f=>`${esc(f.household_name)} ${f.state==="going"?"✓ going":"♥ keen"}`));
+  return bits.length?`<span class="whoami">${bits.join(" · ")}</span>`:"";
+}
+function barHTML(e){
+  const m=myMark(e.id), id=esc(e.id), tix=safeHref(e.ticketUrl) && e.ticketStatus!=="free entry";
+  return `<button class="bbtn int ${m==="interested"?"on":""}" data-act="int" data-id="${id}" aria-pressed="${m==="interested"}">${icon("heart")}<span>Keen</span></button>
+    <button class="bbtn go ${m==="going"?"on":""}" data-act="go" data-id="${id}" aria-pressed="${m==="going"}">${icon("check")}<span>Going</span></button>
+    ${tix?`<button class="bbtn main ticket" data-act="tix" data-id="${id}" aria-expanded="${S.tixOpen===e.id}">${icon("ticket")}<span>${e.ticketStatus==="sold out"?"Sold out":"Tickets"}</span></button>`
+         :`<button class="bbtn main" data-act="when" data-id="${id}">${icon("calq")}<span>When can we go?</span></button>`}`;
+}
+function refreshSheet(id){ // after a pick: update in place (keeps scroll position and open panels)
+  const sh=$(`#sheetHost .sheet[data-ev="${CSS.escape(id)}"]`); if(!sh) return;
+  const e=S.events.find(x=>x.id===id); if(!e) return;
+  const bar=sh.querySelector(".sbar"); if(bar) bar.innerHTML=barHTML(e);
+  const w=sh.querySelector(".whoslot"); if(w) w.innerHTML=whoLine(id);
+}
 function openSheet(id){
   const e=S.events.find(x=>x.id===id); if(!e) return;
-  const people=peopleFor(e.id);
   const maps="https://www.google.com/maps/search/?api=1&query="+encodeURIComponent([e.venue,e.address||e.city].filter(Boolean).join(", "));
   const photos="https://www.google.com/search?tbm=isch&q="+encodeURIComponent(e.title+" "+(e.city||""));
   const video=safeHref(e.videoUrl) || ("https://www.youtube.com/results?search_query="+encodeURIComponent(e.title));
-  const official=safeHref(e.url), src=safeHref(e.source);
+  const official=safeHref(e.url), src=safeHref(e.source), eid=esc(e.id);
+  const tix=safeHref(e.ticketUrl) && e.ticketStatus!=="free entry";
   track("view", e.id);
-  const conf = e.confidence==="likely" ? `<div class="note warn">Date not yet confirmed by the organiser. It's based on previous years, so check the official page before booking.</div>` : "";
-  $("#sheetHost").innerHTML = `<div class="scrim" data-close="1"><div class="sheet" data-ev="${esc(e.id)}" role="dialog" aria-modal="true" aria-label="${esc(e.title)}">
-    <div class="art" style="position:relative">${poster(e,{uid:"s",grain:true})}<div class="tl"><span class="tag">${esc(e.category)}</span>${e.scale==="gem"?'<span class="tag gem">Gem</span>':'<span class="tag">Big event</span>'}${statusTags(e)}</div>${dateBox(e)}<button class="close" data-close="1" aria-label="Close">${icon("x")}</button></div>
+  const p=priceLabel(e), price=p.t==="FREE"?"Free":p.t;
+  const long=(e.description||"").length>260;
+  const facts=[
+    [icon("pin"), `${esc(e.venue||"")}${e.address||e.city?`<small>${esc(e.address||e.city)}</small>`:""}`, `<a href="${esc(maps)}" target="_blank" rel="noopener" data-track="map" data-id="${eid}">Directions</a>`],
+    [icon("ticket"), `${esc(e.priceText&&!e.free?e.priceText:price)}<small>${esc(ticketLine(e))}</small>`, tix?`<a href="#" data-act="tix" data-id="${eid}">Details</a>`:""],
+    [icon("users"), `${esc([(e.audience||[]).join(", "), e.language, e.setting].filter(Boolean).join(" · "))}`, ""]
+  ];
+  $("#sheetHost").innerHTML = `<div class="scrim" data-close="1"><div class="sheet ev" data-ev="${eid}" role="dialog" aria-modal="true" aria-label="${esc(e.title)}">
+    <div class="art">${poster(e,{uid:"s",grain:true})}<div class="tl"><span class="tag">${esc(e.category)}</span>${e.scale==="gem"?'<span class="tag gem">Gem</span>':""}${statusTags(e)}</div>${dateBox(e)}
+      <div class="topbtns"><button class="round" type="button" data-act="sharemenu" data-id="${eid}" aria-label="Share this event" aria-expanded="false">${icon("share")}</button><button class="round close" data-close="1" aria-label="Close">${icon("x")}</button></div>
+      <div class="sharepop" id="sharePop" hidden>
+        <button type="button" data-sendev="wa" data-id="${eid}">${icon("wa")} WhatsApp</button>
+        <button type="button" data-sendev="mail" data-id="${eid}">${icon("mail")} Email</button>
+        <button type="button" data-sendev="more" data-id="${eid}">${icon(navigator.share||window.SO_native.isNative?"share":"link")} ${navigator.share||window.SO_native.isNative?"More options":"Copy link"}</button>
+      </div></div>
     <div class="inner">
-      <h2>${esc(e.title)}</h2>
-      <p class="lede">${esc(e.summary)}</p>
-      ${listenBtn(e,true)}
-      <div class="btnrow">
-        <button class="btn when" data-act="when" data-id="${esc(e.id)}">${icon("calq")} When can we go?</button>
-        <button class="btn primary" data-act="cal" data-id="${esc(e.id)}">${icon("cal")} Add to calendar</button>
-        <a class="btn" href="${esc(gcalUrl(e))}" target="_blank" rel="noopener" data-track="calendar" data-id="${esc(e.id)}">${icon("cal")} Google Calendar</a>
-        ${safeHref(e.ticketUrl) && e.ticketStatus!=="free entry" ? `<button class="btn ticket" data-act="tix" data-id="${esc(e.id)}" aria-expanded="${S.tixOpen===e.id}">${icon("ticket")} ${e.ticketStatus==="sold out"?"Tickets (sold out)":"Get tickets"}</button>`:""}
-      </div>
-      <div id="whenPanel"></div>
+      <header class="shead">
+        <h2>${esc(e.title)}</h2>
+        <p class="when">${esc(whenText(e))}${!e.timeKnown&&!/·/.test(whenText(e))?" · time TBC":""}</p>
+        <p class="where">${esc(placeText(e))}</p>
+        <div class="sline"><span class="pricetag ${p.c}">${esc(p.t)}</span>${listenBtn(e)}<span class="whoslot">${whoLine(e.id)}</span></div>
+      </header>
+      ${e.summary?`<p class="lede">${esc(e.summary)}</p>`:""}
+      ${e.confidence==="likely"?`<div class="note warn">Date not confirmed yet: it's based on previous years, so check the official page before booking.</div>`:""}
+      <section class="plan" aria-label="Plan it">
+        <div class="planrow"><button class="btn when" type="button" data-act="when" data-id="${eid}">${icon("calq")} When can we go?</button>
+          <div class="calwrap"><button class="btn" type="button" data-act="calmenu" data-id="${eid}" aria-expanded="false">${icon("cal")} Add to calendar</button>
+            <div class="calpop" hidden><button type="button" data-act="cal" data-id="${eid}">${icon("cal")} Phone calendar</button><a href="${esc(gcalUrl(e))}" target="_blank" rel="noopener" data-track="calendar" data-id="${eid}">${icon("cal")} Google Calendar</a></div></div></div>
+        <div id="whenPanel"></div>
+      </section>
       <div id="tixPanel">${S.tixOpen===e.id?tixHTML(e):""}</div>
-      <div class="btnrow">
-        <button class="btn ${myMark(e.id)==="interested"?"primary":""}" data-act="int" data-id="${esc(e.id)}" aria-pressed="${myMark(e.id)==="interested"}">${icon("heart")} Keen</button>
-        <button class="btn ${myMark(e.id)==="going"?"primary":""}" data-act="go" data-id="${esc(e.id)}" aria-pressed="${myMark(e.id)==="going"}">${icon("check")} Going</button>
-        <button class="btn" data-act="skip" data-id="${esc(e.id)}">${icon("x")} Not for us</button>
-        ${people.length||(S.friendPicks[e.id]||[]).length?`<div class="whobox">${people.map(([u,st])=>`<span class="person">${avatarEl(u)}${esc(personName(u))} · ${st==="going"?"going":"keen"}</span>`).join("")}${(S.friendPicks[e.id]||[]).map(f=>`<span class="person"><span class="av fr">★</span>${esc(f.household_name)} · ${f.state==="going"?"going":"keen"}</span>`).join("")}</div>`:""}
-      </div>
-      <div class="sharebox"><span class="sharelbl">Send to someone</span>
-        <button class="btn wa" type="button" data-sendev="wa" data-id="${esc(e.id)}">${icon("wa")} WhatsApp</button>
-        <button class="btn" type="button" data-sendev="mail" data-id="${esc(e.id)}">${icon("mail")} Email</button>
-        <button class="btn" type="button" data-sendev="more" data-id="${esc(e.id)}">${icon("share")} ${navigator.share||window.SO_native.isNative?"More":"Copy link"}</button>
-      </div>
-      ${conf}
-      <p class="desc">${esc(e.description)}</p>
-      <dl class="facts">
-        <dt>When</dt><dd class="mono">${esc(whenText(e))}${!e.timeKnown?" · time TBC":""}</dd>
-        <dt>Where</dt><dd>${esc(e.venue||"")}<br><span style="color:var(--muted)">${esc(e.address||e.city||"")}</span> · <a href="${esc(maps)}" target="_blank" rel="noopener" data-track="map" data-id="${esc(e.id)}">Map</a></dd>
-        <dt>Price</dt><dd><b class="mono">${esc(priceLabel(e).t)}</b>${e.priceText&&!e.free&&e.priceText!==priceLabel(e).t?`<br><span style="color:var(--muted)">${esc(e.priceText)}</span>`:""}</dd>
-        <dt>Tickets</dt><dd>${esc(ticketLine(e))}</dd>
-        <dt>For</dt><dd>${(e.audience||[]).map(a=>`<span class="pill ${audClass(a)}">${esc(a)}</span>`).join(" ")}</dd>
-        <dt>Language</dt><dd>${esc(e.language||"")}</dd>
-        <dt>Setting</dt><dd>${esc(e.setting||"")} · ${esc(e.region||"")}</dd>
-        ${(e.tags||[]).length?`<dt>Tags</dt><dd style="color:var(--muted)">${(e.tags||[]).map(esc).join(" · ")}</dd>`:""}
-      </dl>
-      <div class="btnrow">
-        ${official?`<a class="btn" href="${esc(official)}" target="_blank" rel="noopener" data-track="official" data-id="${esc(e.id)}">${icon("link")} Official page</a>`:""}
-        <a class="btn" href="${esc(video)}" target="_blank" rel="noopener" data-track="video" data-id="${esc(e.id)}">${icon("play")} Video</a>
-        <a class="btn" href="${esc(photos)}" target="_blank" rel="noopener" data-track="photos" data-id="${esc(e.id)}">${icon("img")} Photos</a>
-        <a class="btn" href="${esc(maps)}" target="_blank" rel="noopener" data-track="map" data-id="${esc(e.id)}">${icon("pin")} Directions</a>
-      </div>
-      <div id="inviteMsg"></div>
-      <p class="note">“Add to calendar” opens the event in your phone’s calendar and marks it Going. ${src?`Source: <a href="${esc(src)}" target="_blank" rel="noopener" data-track="official" data-id="${esc(e.id)}">${esc(hostOf(src))}</a>`:""}</p>
-    </div></div></div>`;
+      ${e.description?`<div class="about ${long?"clamp":""}"><p>${esc(e.description)}</p>${long?`<button type="button" class="more" data-act="readmore">Read more</button>`:""}</div>`:""}
+      <ul class="facts2">${facts.map(f=>`<li>${f[0]}<span>${f[1]}</span>${f[2]}</li>`).join("")}</ul>
+      <p class="links">${official?`<a href="${esc(official)}" target="_blank" rel="noopener" data-track="official" data-id="${eid}">${icon("link")} Website</a>`:""}<a href="${esc(video)}" target="_blank" rel="noopener" data-track="video" data-id="${eid}">${icon("play")} Video</a><a href="${esc(photos)}" target="_blank" rel="noopener" data-track="photos" data-id="${eid}">${icon("img")} Photos</a></p>
+      ${(e.tags||[]).length?`<p class="tagline">${(e.tags||[]).map(esc).join(" · ")}</p>`:""}
+      <p class="sfoot"><button type="button" class="quiet" data-act="skip" data-id="${eid}">${icon("x")} Not for us</button>${src?`<span>Source: <a href="${esc(src)}" target="_blank" rel="noopener" data-track="official" data-id="${eid}">${esc(hostOf(src))}</a></span>`:""}</p>
+    </div>
+    <div class="sbar">${barHTML(e)}</div>
+  </div></div>`;
   document.body.style.overflow="hidden";
-  setTimeout(()=>{ const c=$("#sheetHost .close"); c&&c.focus(); },30);
+  setTimeout(()=>{ const d=$("#sheetHost .sheet.ev"); if(d){ d.setAttribute("tabindex","-1"); d.focus({preventScroll:true}); } },30);
 }
 function hostOf(u){ try{ return new URL(u).hostname.replace(/^www\./,""); }catch(e){ return u; } }
 function ticketLine(e){ const st=e.ticketStatus||"unknown"; const map={"on sale":"On sale now","selling fast":"Selling fast. Book soon","sold out":"Sold out","not yet on sale":"Not on sale yet","at the door":"Pay at the door","free entry":"No tickets needed","registration":"Free or paid registration required","unknown":"Check the official page"}; return (e.ticketsRequired===false&&st!=="registration"?"No tickets needed":map[st]||st); }
 function closeSheet(){ askStop(); AK.state="idle"; $("#sheetHost").innerHTML=""; document.body.style.overflow=""; S.tixOpen=null; }
 
+function togglePop(sel, btn){
+  const pop=$("#sheetHost "+sel); if(!pop) return; const show=pop.hidden;
+  document.querySelectorAll("#sheetHost .sharepop,#sheetHost .calpop").forEach(x=>x.hidden=true);
+  document.querySelectorAll('#sheetHost [data-act="sharemenu"],#sheetHost [data-act="calmenu"]').forEach(x=>x.setAttribute("aria-expanded","false"));
+  pop.hidden=!show; btn.setAttribute("aria-expanded", String(show));
+}
+document.addEventListener("click", ev=>{ if(!ev.target.closest(".sharepop,.calpop,[data-act=sharemenu],[data-act=calmenu]")) document.querySelectorAll("#sheetHost .sharepop,#sheetHost .calpop").forEach(x=>x.hidden=true); }, true);
 /* ---------- ticket details (live check of the seller's page) ---------- */
 const AVAIL={"available":["Available","ok"],"few left":["Few left","hot"],"sold out":["Sold out","sold"],"not yet on sale":["Not on sale yet","wait"],"cancelled":["Cancelled","sold"]};
 function availPill(a){ const x=AVAIL[a]; return x?`<span class="av-pill ${x[1]}">${x[0]}</span>`:""; }
@@ -543,7 +560,7 @@ async function setMark(id, state){
   if(!S.uid || !S.household){ toast("Sign in first."); return; }
   const cur=myMark(id); const next = cur===state ? null : state; window.SO_native.haptic(next==="going"?"success":"light");
   track(next==="going"?"going":next==="interested"?"keen":cur==="going"?"ungoing":"unkeen", id);
-  const m=Object.assign({}, S.marks[id]||{}); if(next) m[S.uid]=next; else delete m[S.uid]; S.marks[id]=m; render(); if($("#sheetHost .sheet[data-ev]")) openSheet(id);
+  const m=Object.assign({}, S.marks[id]||{}); if(next) m[S.uid]=next; else delete m[S.uid]; S.marks[id]=m; render(); refreshSheet(id);
   const q = next ? sb.from("picks").upsert({event_id:id, user_id:S.uid, household_id:S.household.id, state:next, updated_at:new Date().toISOString()})
                  : sb.from("picks").delete().eq("event_id",id).eq("user_id",S.uid);
   const { error } = await q; if(error) toast("Couldn't save that pick: "+error.message);
@@ -561,13 +578,6 @@ async function openSettings(){
   $("#sheetHost").innerHTML=`<div class="scrim" data-close="1"><div class="sheet" role="dialog" aria-modal="true" aria-label="Settings"><div class="inner" style="padding-top:calc(22px + env(safe-area-inset-top,0px))">
     <div style="display:flex;align-items:center;gap:10px"><h2 style="margin-right:auto">Settings</h2><button class="iconbtn" data-close="1" aria-label="Close">${icon("x")}</button></div>
     <div class="form">
-      <div class="setrows">
-        <button class="ig-row" type="button" data-invite-open><span class="rowic">${icon("users")}</span><span><b>Invite people</b><small>Send a link by WhatsApp or email</small></span><span aria-hidden="true">›</span></button>
-        <button class="ig-row" type="button" data-contact="venue"><span class="rowic">${icon("pin")}</span><span><b>Suggest a venue or place</b><small>We'll check it every morning</small></span><span aria-hidden="true">›</span></button>
-        <button class="ig-row" type="button" data-contact="contact"><span class="rowic">${icon("mail")}</span><span><b>Contact us</b><small>Questions, ideas, problems</small></span><span aria-hidden="true">›</span></button>
-        ${S.isAdmin?`<a class="ig-row" href="/admin.html"><span class="rowic">${icon("cal")}</span><span><b>Admin dashboard</b><small>Users, activity, events, messages</small></span><span aria-hidden="true">›</span></a>`:""}
-      </div>
-      ${window.SO_install&&!window.SO_install.isStandalone()?`<button class="ig-row" type="button" data-ig-open><img src="/icons/apple-touch-icon.png" alt="" width="40" height="40"><span><b>Install on your phone</b><small>Step-by-step, takes 20 seconds</small></span><span aria-hidden="true">›</span></button>`:""}
       <div><label>Your household</label>
         <div class="hidrow"><input id="hhName" value="${esc(h.name||"")}" aria-label="Household name" style="flex:1;background:var(--surface2);border:1px solid var(--line);border-radius:10px;padding:9px 11px"><button class="chip" id="saveHh" type="button">Save</button></div>
         <p class="desc" style="margin:8px 0 4px">Members: ${members.map(m=>esc(m.display_name||"Member")).join(", ")||"just you"}</p>
@@ -592,6 +602,20 @@ async function openSettings(){
     ? `<div class="hidrow"><span>✓ ${esc(c.label||c.provider)}</span><button class="chip" type="button" id="calOff">Disconnect</button></div>`
     : `<button class="btn" type="button" data-act="calconnect">${icon("calq")} Connect my calendar</button>`;
     const off=$("#calOff"); if(off) off.onclick=async()=>{ await sb.rpc("delete_my_calendar"); toast("Calendar disconnected"); openSettings(); }; });
+}
+
+/* ---------- main menu ---------- */
+function openMenu(){
+  const me=S.members[S.uid]||{}, IG=window.SO_install;
+  const row=(attrs, ic, t, sub)=>`<button class="ig-row" type="button" ${attrs}><span class="rowic">${icon(ic)}</span><span><b>${t}</b><small>${sub}</small></span><span aria-hidden="true">›</span></button>`;
+  sheetShell(me.display_name?("Hi "+me.display_name):"Menu", `<div class="setrows">
+    ${row("data-open-settings","gear","Settings","Household, partner, friends, calendar, account")}
+    ${row("data-invite-open","users","Invite people","Send a link by WhatsApp or email")}
+    ${row("data-tips-open","phone",IG&&IG.isStandalone()?"Help":"Install the app &amp; help","Put Swiss Outings on your home screen")}
+    ${row('data-contact="venue"',"pin","Suggest a venue or place","We'll check it every morning")}
+    ${row('data-contact="contact"',"mail","Contact us","Questions, ideas, problems")}
+    ${S.isAdmin?`<a class="ig-row" href="/admin.html"><span class="rowic">${icon("cal")}</span><span><b>Admin dashboard</b><small>Users, activity, events, messages</small></span><span aria-hidden="true">›</span></a>`:""}
+  </div>`);
 }
 
 /* ---------- sharing an event ---------- */
@@ -745,8 +769,9 @@ function openCalendarConnect(msg){
 
 /* ---------- ask by voice or in your own words ---------- */
 function askBar(){
-  if(S.askSummary) return `<div class="askbar on"><button type="button" class="askbtn" data-ask-open>${icon("mic")}<span><small>Showing</small>${esc(S.askSummary)}</span></button><button type="button" class="askx" data-ask-clear aria-label="Clear this search">${icon("x")}</button></div>`;
-  return `<div class="askbar"><button type="button" class="askbtn" data-ask-open>${icon("mic")}<span><small>Ask Swiss Outings</small>“Something for the kids this weekend…”</span></button></div>`;
+  const fbtn=`<button type="button" class="fbtn2" id="openFilters" aria-label="Filters">${icon("sliders")}<span>Filters</span><span class="fcount" id="fcount" ${activeCount()&&!S.askSummary?"":"hidden"}>${activeCount()}</span></button>`;
+  if(S.askSummary) return `<div class="askbar on"><button type="button" class="askbtn" data-ask-open>${icon("mic")}<span><small>Showing</small>${esc(S.askSummary)}</span></button><button type="button" class="askx" data-ask-clear aria-label="Clear this search">${icon("x")}</button>${fbtn}</div>`;
+  return `<div class="askbar"><button type="button" class="askbtn" data-ask-open>${icon("mic")}<span><small>Ask or search</small>“Kids stuff this weekend…”</span></button>${fbtn}</div>`;
 }
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
 const AK={rec:null, media:null, chunks:[], timer:null, state:"idle"};
@@ -873,7 +898,7 @@ function buildFilters(){
 document.addEventListener("click", ev=>{
   const t=ev.target;
   const act=t.closest("[data-act]");
-  if(act){ ev.stopPropagation(); const id=act.dataset.id; if(act.dataset.act==="listen"){ listen(id); return; } if(act.dataset.act==="when"){ whenCanWeGo(id); return; } if(act.dataset.act==="bookon"){ bookOn(id, act.dataset.on); return; } if(act.dataset.act==="calconnect"){ openCalendarConnect(); return; } if(act.dataset.act==="skip") hideEvent(id); else if(act.dataset.act==="int") setMark(id,"interested"); else if(act.dataset.act==="go") setMark(id,"going"); else if(act.dataset.act==="cal") addToCalendar(id); else if(act.dataset.act==="tix") openTix(id); else if(act.dataset.act==="tixrefresh") loadTix(id,true); else if(act.dataset.act==="tixclose"){ if(S.tixOpen===id) openTix(id); } return; }
+  if(act){ ev.stopPropagation(); const id=act.dataset.id; if(act.dataset.act==="listen"){ listen(id); return; } if(act.dataset.act==="sharemenu"){ togglePop("#sharePop", act); return; } if(act.dataset.act==="calmenu"){ togglePop(".calpop", act); return; } if(act.dataset.act==="readmore"){ const a=act.closest(".about"); a&&a.classList.remove("clamp"); act.remove(); return; } if(act.dataset.act==="when"){ whenCanWeGo(id); return; } if(act.dataset.act==="bookon"){ bookOn(id, act.dataset.on); return; } if(act.dataset.act==="calconnect"){ openCalendarConnect(); return; } if(act.dataset.act==="skip") hideEvent(id); else if(act.dataset.act==="int") setMark(id,"interested"); else if(act.dataset.act==="go") setMark(id,"going"); else if(act.dataset.act==="cal") addToCalendar(id); else if(act.dataset.act==="tix"){ ev.preventDefault(); openTix(id); } else if(act.dataset.act==="tixrefresh") loadTix(id,true); else if(act.dataset.act==="tixclose"){ if(S.tixOpen===id) openTix(id); } return; }
   const tr=t.closest("[data-track]"); if(tr){ track(tr.dataset.track, tr.dataset.id||null, tr.dataset.track==="tickets"?{step:"checkout"}:{}); }
   const sh=t.closest("[data-sendev]"); if(sh){ ev.stopPropagation(); shareEvent(sh.dataset.id, sh.dataset.sendev); return; }
   const sv=t.closest("[data-send]"); if(sv){ sendInvite(sv.dataset.send, sv.dataset.who); return; }
@@ -889,7 +914,8 @@ document.addEventListener("click", ev=>{
   const day=t.closest("[data-day]"); if(day){ S.calSel = S.calSel===day.dataset.day?null:day.dataset.day; render(); if(S.calSel && window.innerWidth<760){ const h=$("#dayHead"); h&&h.scrollIntoView({behavior:"smooth",block:"start"}); } return; }
   if(t.id==="undoBtn"){ const f=undoFn; undoFn=null; $("#toastHost").innerHTML=""; f&&f(); return; }
   const rs=t.closest("[data-restore]"); if(rs){ unhideEvent(rs.dataset.restore); return; }
-  if(t.closest("#openSettings")){ openSettings(); return; }
+  if(t.closest("#openSettings")||t.closest("[data-open-settings]")){ openSettings(); return; }
+  if(t.closest("#openMenu")){ openMenu(); return; }
   if(t.closest("#openFilters")){ openFilters(true); return; }
   if(t.id==="closeFilters"||t.id==="fscrim"){ openFilters(false); window.scrollTo({top:0}); return; }
   if(t.id==="clearFilters"||t.closest("[data-ask-clear]")){ resetFilters(); render(); return; }
