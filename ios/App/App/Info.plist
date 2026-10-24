@@ -24,6 +24,10 @@
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>NSCalendarsWriteOnlyAccessUsageDescription</key>
 	<string>Outings adds the events you choose to your calendar.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>So you can say what kind of event you are looking for.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>To turn what you say into a search for events.</string>
 	<key>NSCalendarsUsageDescription</key>
 	<string>Outings adds the events you choose to your calendar.</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
