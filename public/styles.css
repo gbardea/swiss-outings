@@ -487,3 +487,21 @@ body.gated{overflow:hidden}
 .askform .inp{flex:1;background:var(--surface2);border:1px solid var(--line);border-radius:10px;padding:10px 12px}
 .askex{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;font-size:13px;color:var(--muted);align-items:center}
 @media (max-width:440px){ .brand h1,.brand small{display:none} }
+
+/* ---------- when can we go ---------- */
+.btn.when{background:color-mix(in srgb,var(--go) 14%,var(--surface));border-color:color-mix(in srgb,var(--go) 45%,var(--line));color:var(--ink)}
+.whenbox{border:1px solid var(--line);background:var(--surface2);border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:10px}
+.whenbox h3{margin:0;font-family:var(--f-display);font-size:18px}
+.whenbox p{margin:0;color:var(--muted)}
+.whenbest{display:grid;grid-template-columns:36px 1fr auto;gap:10px;align-items:center}
+.whenbest .ok,.whenbest .no{width:36px;height:36px;border-radius:50%;display:grid;place-items:center;font-weight:800;color:#fff;background:var(--go)}
+.whenbest .no{background:var(--warn)}
+.whenbest b{display:block;font-size:17px}
+.whenbest small{color:var(--muted)}
+.whenmore{display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:13px;color:var(--muted)}
+.whenmore .btn{padding:7px 10px;font-size:13px}
+.whenclash{margin:0;padding:0;list-style:none;font-size:13.5px;color:var(--muted);display:flex;flex-direction:column;gap:2px}
+.whennote{font-size:12.5px}
+.steps{margin:6px 0 4px;padding-left:20px;font-size:14px;color:var(--muted)}
+details summary{cursor:pointer;font-weight:600;font-size:14px}
+@media (max-width:520px){.whenbest{grid-template-columns:36px 1fr}.whenbest .btn{grid-column:1/-1}}

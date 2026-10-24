@@ -18,6 +18,15 @@ module.exports = async (req, res) => {
   const rows = r.ok ? await r.json() : [];
   if (!rows.length) { res.status(404).send("not found"); return; }
   const e = rows[0].data;
+  // ?on=YYYY-MM-DD or YYYY-MM-DDTHH:MM picks one date of a multi-date event ("When can we go?")
+  const on = parse(String((req.query && req.query.on) || ""));
+  if (on) {
+    const s0 = parse(e.start), e0 = parse(e.end);
+    const durH = (s0 && e0 && s0.h != null && e0.h != null && days(s0, e0) === 0) ? Math.max(1, Math.round(((e0.h * 60 + e0.mi) - (s0.h * 60 + s0.mi)) / 60)) : 2;
+    e.start = on.h != null ? `${on.y}-${pad(on.mo)}-${pad(on.d)}T${pad(on.h)}:${pad(on.mi)}` : `${on.y}-${pad(on.mo)}-${pad(on.d)}`;
+    e.end = on.h != null ? (() => { const x = addHours(on, durH); return `${x.y}-${pad(x.mo)}-${pad(x.d)}T${pad(x.h)}:${pad(x.mi)}`; })() : null;
+    e.timeKnown = on.h != null;
+  }
   const s = parse(e.start), en0 = parse(e.end);
   const hasTime = e.timeKnown && s.h != null;
   const span = en0 ? days(s, en0) : 0;

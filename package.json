@@ -2,7 +2,9 @@
   "name": "swiss-outings",
   "private": true,
   "version": "1.0.0",
-  "engines": { "node": ">=18" },
+  "engines": {
+    "node": ">=18"
+  },
   "scripts": {
     "test": "node --test test/*.test.js && node test/e2e.mjs",
     "ios:sync": "cap sync ios"
@@ -17,7 +19,8 @@
     "@capacitor/share": "^8.0.3",
     "@capacitor/splash-screen": "^8.0.2",
     "@capacitor/status-bar": "^8.0.4",
-    "@ebarooni/capacitor-calendar": "^8.7.1"
+    "@ebarooni/capacitor-calendar": "^8.7.1",
+    "ical.js": "^2.2.1"
   },
   "devDependencies": {
     "@capacitor/assets": "^3.0.5",

@@ -280,6 +280,7 @@ async function start(){
   A.render();
   realtime();
   A.track("app_open", null, {installed: IG.isStandalone(), platform: IG.platform()});
+  if(params.get("cal")){ A.toast(params.get("cal")==="connected" ? "Calendar connected. Tap “When can we go?” on any event." : "Couldn't connect the calendar. Please try again."); history.replaceState(null,"","/"); }
   const ev = cacheGet("openEvent");
   if(ev){ cacheSet("openEvent", null); history.replaceState(null,"","/"); if(S.events.some(x=>x.id===ev)) A.openSheet(ev); else A.toast("That event has finished or was removed."); }
   else if(!cacheGet("needsInstall")) A.maybeShowTips();

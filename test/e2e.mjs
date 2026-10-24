@@ -138,6 +138,19 @@ await check("'Who's it for' uses generic labels", async () => { await page.click
 await page.screenshot({ path: path.join(ROOT, "test/screens/phone-home.png") }).catch(() => {});
 await page.context().close();
 
+// 1b. "When can we go?"
+page = await newPage("member", { mobile: true });
+let calMode = "connect"; const icsHits = [];
+await page.route("**/api/cal?action=when", r => r.fulfill({ contentType: "application/json", body: JSON.stringify(calMode === "connect" ? { needsConnect: true, dates: 5 }
+  : { best: { when: "Sat 14 Nov", local: "2026-11-14", pref: 2 }, more: [{ when: "Sun 15 Nov", local: "2026-11-15" }], clashes: [{ when: "Fri 13 Nov", busy: ["Corie"] }], checked: ["You", "Corie"], failed: [], meConnected: true, single: false }) }));
+await page.route("**/api/ics?**", r => { icsHits.push(r.request().url()); r.fulfill({ status: 204, body: "" }); });
+await page.goto(BASE + "/"); await page.waitForSelector(".card"); await page.evaluate(() => localStorage.setItem("so.tipsSeen", "1"));
+await page.click('#sheetHost [data-close]', { timeout: 3000 }).catch(() => {});
+await check("event page has a 'When can we go?' button", async () => { await page.evaluate(id => window.__app.openSheet(id), EVENTS[3].id); assert(await page.isVisible('.sheet [data-act="when"]')); });
+await check("no calendar yet → offers to connect, with iPhone steps", async () => { await page.click('.sheet [data-act="when"]'); await page.waitForSelector('#whenPanel [data-act="calconnect"]'); await page.click('#whenPanel [data-act="calconnect"]'); await page.waitForSelector("#icsForm"); const t = await page.textContent("#sheetHost"); assert(/Public Calendar/.test(t) && /Google Calendar/.test(t) && /never stores/.test(t)); await page.click('#sheetHost .iconbtn[data-close]'); });
+await check("with calendars → best date, alternatives and clashes; Book it adds that date", async () => { calMode = "ok"; await page.evaluate(id => window.__app.openSheet(id), EVENTS[3].id); await page.click('.sheet [data-act="when"]'); await page.waitForSelector(".whenbest"); const t = await page.textContent("#whenPanel"); assert(/Sat 14 Nov/.test(t) && /both free/.test(t) && /Sun 15 Nov/.test(t) && /Corie busy/.test(t), t); await page.click('.whenbest [data-act="bookon"]'); await page.waitForTimeout(600); assert(icsHits.some(u => u.includes("on=2026-11-14")), icsHits.join(",")); });
+await page.context().close();
+
 // 2. Brand-new user arriving from a friend's invite link
 page = await newPage("newuser", { mobile: true });
 await page.goto(BASE + "/?invite=FRNDCODE");
