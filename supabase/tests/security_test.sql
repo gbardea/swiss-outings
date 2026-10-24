@@ -163,4 +163,12 @@ reset role;
 insert into t_res(name,ok) values ('delete my account removes login + household',
   not exists (select 1 from auth.users where id='00000000-0000-0000-0000-0000000000c1') and not exists (select 1 from households where name='House C'));
 
+-- public coverage numbers: anon can read aggregates, no personal data
+set local role anon;
+do $$ declare c jsonb; begin
+  c := public.coverage();
+  insert into t_res(name,ok,info) values ('anon can read coverage numbers', (c->>'events')::int >= 1 and c ? 'sources' and not (c::text ilike '%@test.invalid%'), left(c::text,120));
+end $$;
+reset role;
+
 select name, ok, info from t_res order by n;

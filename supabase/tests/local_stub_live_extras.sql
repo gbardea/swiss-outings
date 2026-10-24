@@ -1,5 +1,5 @@
 -- Functions/tables that exist on the live project but not in schema.sql (simplified stand-ins)
-create table if not exists public.scan_sources(id bigserial primary key, url text unique);
+create table if not exists public.scan_sources(id bigserial primary key, url text unique, grp text, region text);
 alter table public.scan_sources enable row level security;
 create policy src_admin on public.scan_sources for all to authenticated using (public.i_am_admin()) with check (public.i_am_admin());
 create or replace function public.import_seed(p_events jsonb, p_picks jsonb, p_hidden jsonb) returns integer language sql security definer as $$ select 0 $$;
