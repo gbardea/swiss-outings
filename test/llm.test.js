@@ -7,6 +7,8 @@ global.fetch = async (url, opts = {}) => {
   const J = (o, s = 200) => new Response(JSON.stringify(o), { status: s });
   if (url === "https://api.anthropic.com/v1/messages") {
     const b = JSON.parse(opts.body);
+    if (b.model === "claude-missing") return J({ type: "error", error: { type: "not_found_error", message: "model: claude-missing" } }, 404);
+    if (b.model === "claude-broke") return J({ type: "error", error: { type: "invalid_request_error", message: "Your credit balance is too low to access the Anthropic API." } }, 400);
     const wantsJson = /single valid JSON object/.test(b.system);
     return J({ content: [{ type: "text", text: wantsJson ? "```json\n{\"audience\":\"Kids\",\"region\":\"near\",\"summary\":\"Kids near Zurich\"}\n```" : "Lunik at Kammgarn in Schaffhausen on Saturday evening: dreamy Swiss indie-pop in a small hall, tickets from thirty-eight francs." }] });
   }
@@ -52,4 +54,28 @@ test("voice search with Claude only: text works, recorded audio explains transcr
   assert.strictEqual(ok.status, 200); assert.strictEqual(JSON.parse(ok.body).filters.region, "near");
   const audio = await call(ask, { method: "POST", body: { audio: "AAAA", mime: "audio/webm" }, headers: { authorization: "Bearer a.b.c" } });
   assert.strictEqual(audio.status, 501);
+});
+
+test("errors get a short, actionable reason", () => {
+  assert.strictEqual(LLM.reason(new Error("claude 400 Your credit balance is too low")).code, "ai-credit");
+  assert.strictEqual(LLM.reason(new Error("claude 401 invalid x-api-key")).code, "ai-key");
+  assert.strictEqual(LLM.reason(Object.assign(new Error("This operation was aborted"), { name: "TimeoutError" })).code, "ai-slow");
+  assert.strictEqual(LLM.reason(new Error("claude 404 model: x")).code, "ai-model");
+});
+test("smart model failure falls back to the fast model once", async () => {
+  process.env.ANTHROPIC_API_KEY = "sk-ant"; process.env.CLAUDE_SMART_MODEL = "claude-missing";
+  const j = await LLM.completeWithFallback({ system: "s", user: "u", json: true, tier: "smart" }, 30000);
+  assert.strictEqual(j.audience, "Kids"); assert.match(JSON.parse(sent.pop().opts.body).model, /haiku/);
+  process.env.CLAUDE_SMART_MODEL = "claude-broke"; // out of credit: no point retrying
+  await assert.rejects(LLM.completeWithFallback({ system: "s", user: "u", tier: "smart" }, 30000), /credit/);
+  delete process.env.CLAUDE_SMART_MODEL;
+});
+test("plan health check reports each model without exposing the key", async () => {
+  process.env.ANTHROPIC_API_KEY = "sk-ant-secret"; process.env.CLAUDE_SMART_MODEL = "claude-broke";
+  const plan = require("../api/plan");
+  const r = await call(plan, { query: { action: "health" } });
+  const j = JSON.parse(r.body);
+  assert.strictEqual(j.provider, "claude"); assert.strictEqual(j.fast.ok, true); assert.strictEqual(j.smart.ok, false); assert.strictEqual(j.smart.code, "ai-credit");
+  assert.ok(!r.body.includes("sk-ant-secret"));
+  delete process.env.CLAUDE_SMART_MODEL;
 });

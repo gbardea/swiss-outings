@@ -48,8 +48,11 @@ function eventLine(e) {
   return [e.id, e.title, t && e.timeKnown ? "starts " + t[1] : "all day", e.venue, e.city, (e.audience || []).join("/"), e.category, price, String(e.summary || "").slice(0, 90)].join(" | ");
 }
 const STOP_SCHEMA = `{"type":"activity|meal|event","name":"","place_query":"name and town to find it on a map","town":"","arrive":"HH:MM","duration_min":90,"cost_chf":0,"why":"one warm sentence ≤140 chars","tip":"one practical tip","kids_note":"short note for kids or null","opening_note":"e.g. 'Open 10–17 in winter, check before going' or null","wiki_title":"English Wikipedia article title for fun facts, or null","event_id":"id from the events list or null","fixed_start":"HH:MM if it has a set start time, else null"}`;
-async function ai(messages, maxTokens) { // Claude (smart tier) when ANTHROPIC_API_KEY is set, otherwise OpenAI
-  return LLM.complete({ system: messages[0].content, user: messages[1].content, json: true, tier: "smart", temperature: 0.7, maxTokens, timeoutMs: 40000 });
+// Claude when ANTHROPIC_API_KEY is set, otherwise OpenAI. Default: the fast model (Haiku), so the whole request
+// (AI + maps + live timetables) fits the server's 60-second limit; PLAN_TIER=smart uses Sonnet with Haiku as backup.
+async function ai(messages, maxTokens) {
+  const tier = process.env.PLAN_TIER === "smart" ? "smart" : "fast";
+  return LLM.completeWithFallback({ system: messages[0].content, user: messages[1].content, json: true, tier, temperature: 0.7, maxTokens, timeoutMs: tier === "smart" ? 25000 : 30000 }, 32000);
 }
 function familyText(p) {
   const k = p.who.kids.length ? `${p.who.kids.length} kid${p.who.kids.length > 1 ? "s" : ""} aged ${p.who.kids.join(", ")}` : "no kids";
@@ -83,8 +86,17 @@ function headsUpFrom(sched, plan) {
 }
 
 module.exports = async (req, res) => {
-  const q = req.query || {}, action = String(q.action || "");
+  const q = req.query || {}, action = String(q.action || ""), t0 = Date.now();
   try {
+    if (action === "health") { // open /api/plan?action=health in a browser to see whether the AI is working (no secrets shown)
+      const out = { provider: LLM.provider(), models: LLM.models() };
+      for (const tier of ["fast", "smart"]) {
+        const s = Date.now();
+        try { await LLM.complete({ system: "Reply with the single word OK.", user: "ping", tier, maxTokens: 5, timeoutMs: 15000 }); out[tier] = { ok: true, ms: Date.now() - s }; }
+        catch (e) { out[tier] = Object.assign({ ok: false, ms: Date.now() - s }, LLM.reason(e)); }
+      }
+      return json(res, 200, out, "public, s-maxage=60");
+    }
     if (action === "geocode") {
       const s = String(q.q || "").trim(); if (s.length < 3) return json(res, 200, { results: [] });
       return json(res, 200, { results: await P.geocode(s) }, "public, s-maxage=86400");
@@ -112,11 +124,11 @@ ${p.note ? "Their wishes: " + p.note : ""}
 Swiss Outings events that day (id | title | time | venue | town | audience | category | price | summary):
 ${fit.map(eventLine).join("\n") || "(none)"}
 Return JSON: {"title":"short catchy title","summary":"one sentence","stops":[${STOP_SCHEMA}],"heads_up":["things to watch out for, e.g. closed days, steep paths, cash only, bring swimwear"],"packing":["short items"]}`;
-      const draft = await ai([{ role: "system", content: SYSTEM }, { role: "user", content: user }], 1600);
+      const draft = await ai([{ role: "system", content: SYSTEM }, { role: "user", content: user }], 2500);
       const stops = await enrichStops(draft.stops, p.start);
       if (!stops.length) return json(res, 502, { error: "Couldn't put a plan together. Please try again." });
       const plan = { day: p.day, start: p.start, travel: p.travel, who: p.who, stops };
-      const sched = await P.reflow(plan);
+      const sched = await P.reflow(plan, { deadline: t0 + 50000 });
       return json(res, 200, { plan: { title: String(draft.title || "Our day out").slice(0, 80), summary: String(draft.summary || "").slice(0, 240), day: p.day, params: p, weather: wx,
         start: p.start, travel: p.travel, who: p.who, stops: sched.stops, legs: sched.legs, leaveHome: sched.leaveHome, backHome: sched.backHome,
         travelMin: sched.travelMin, costChf: sched.costChf, headsUp: (Array.isArray(draft.heads_up) ? draft.heads_up : []).map(x => String(x).slice(0, 160)).slice(0, 5).concat(headsUpFrom(sched, plan)),
@@ -141,7 +153,7 @@ Return JSON: {"options":[${STOP_SCHEMA}]}`;
       const plan = b.plan || {}; const p = cleanParams(Object.assign({}, plan.params, { start: plan.start, day: plan.day }));
       if (!p.start || !p.day || !Array.isArray(plan.stops)) return json(res, 400, { error: "bad plan" });
       const stops = plan.stops.slice(0, 7).map(s => Object.assign({}, s, { lat: +s.lat, lon: +s.lon, duration_min: num(s.duration_min, 15, 360, 90), arrive: s.fixedStart || s.arrive }));
-      const sched = await P.reflow({ day: p.day, start: p.start, travel: p.travel, who: p.who, stops });
+      const sched = await P.reflow({ day: p.day, start: p.start, travel: p.travel, who: p.who, stops }, { deadline: t0 + 50000 });
       const keepHeads = (plan.headsUp || []).filter(h => !/^Train home leaves|^Some connections|^Fares /.test(h));
       return json(res, 200, { plan: Object.assign({}, plan, { stops: sched.stops, legs: sched.legs, leaveHome: sched.leaveHome, backHome: sched.backHome, travelMin: sched.travelMin, costChf: sched.costChf,
         headsUp: keepHeads.concat(headsUpFrom(sched, { travel: p.travel, who: p.who })) }) });
@@ -149,7 +161,8 @@ Return JSON: {"options":[${STOP_SCHEMA}]}`;
     return json(res, 400, { error: "unknown action" });
   } catch (err) {
     console.warn("plan", action, err && err.message);
-    return json(res, 500, { error: "Something went wrong planning the day. Please try again." });
+    const r = LLM.reason(err);
+    return json(res, 500, { error: "Something went wrong planning the day." + (r.text ? " " + r.text : "") + " Please try again.", code: r.code });
   }
 };
 module.exports.cleanParams = cleanParams;

@@ -15,7 +15,10 @@ function nextDow(dow){ const t = new Date(A().TODAY); const k = (dow - t.getDay(
 function ctaLabel(){ const d = A().TODAY.getDay(); if(d === 6) return "Plan our Saturday"; if(d === 0) return "Plan our Sunday"; if(d >= 4) return "Plan our weekend"; return "Plan a day out"; }
 async function post(action, payload){
   const r = await fetch(api("/api/plan") + "?action=" + action, { method: "POST", headers: { "Content-Type": "application/json", ...(await A().authHeader()) }, body: JSON.stringify(payload) });
-  let j = {}; try{ j = await r.json(); }catch(x){} if(!r.ok) throw new Error(j.error || "Something went wrong. Please try again."); return j;
+  let j = {}; try{ j = await r.json(); }catch(x){}
+  if(!r.ok){ A().track("plan", null, { error: j.code || ("http" + r.status), action });
+    throw new Error(j.error || (r.status === 504 ? "The planner took too long this time. Please try again." : "Something went wrong (" + r.status + "). Please try again.")); }
+  return j;
 }
 let leafletP = null;
 function leaflet(){
