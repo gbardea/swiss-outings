@@ -760,3 +760,32 @@ button.st-sample{cursor:pointer}
 .st-link u{color:var(--accent);text-decoration:none;margin-left:6px;font-weight:600}
 .ob-how{background:none;border:0;padding:4px 0;font:inherit;font-weight:600;color:var(--accent);cursor:pointer;align-self:flex-start}
 @media (max-width:380px){.st-nums{grid-template-columns:1fr 1fr}.st-cats{grid-template-columns:1fr}}
+
+/* ---------- planner: centred window on computers, two columns for the plan ---------- */
+.pcols{display:flex;flex-direction:column;gap:14px}
+.pside{display:flex;flex-direction:column;gap:14px}
+.pextra{display:flex;flex-direction:column;gap:12px}
+.phead{display:flex;flex-direction:column;gap:12px}
+.phead1{display:flex;flex-direction:column;gap:8px}
+.replan-open{display:flex;align-items:center;gap:12px;width:100%;text-align:left;border:1px dashed var(--line);background:var(--surface);border-radius:14px;padding:10px 14px;cursor:pointer;font:inherit;color:inherit}
+.replan-open:hover{border-color:var(--accent)}
+.replan-open svg{width:20px;height:20px;color:var(--accent);flex:none}
+.replan-open span:nth-child(2){flex:1;display:flex;flex-direction:column}
+.replan-open small{color:var(--muted);font-size:12.5px}
+.replan-box{margin-top:8px;border:1px solid var(--line);background:var(--surface2);border-radius:14px;padding:12px 14px;display:flex;flex-direction:column;gap:10px}
+.replan-box .chips{display:flex;flex-wrap:wrap;gap:6px}
+.replan-box textarea{width:100%;resize:vertical;min-height:56px}
+@media (min-width:900px){
+  .scrim.center{justify-content:center;align-items:center;padding:24px}
+  .scrim.center .sheet.planflow{width:min(680px,100%);height:auto;max-height:calc(100vh - 48px);border-radius:22px;box-shadow:0 30px 80px rgba(0,0,0,.35);animation:pop .18s ease-out}
+  .scrim.center .sheet.planflow.planview{width:min(1240px,100%);height:calc(100vh - 48px)}
+  .sheet.planview .inner{padding:22px 28px 24px}
+  .sheet.planview .phead{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:24px;align-items:end}
+  .sheet.planview .pcols{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.05fr);gap:28px;align-items:start}
+  .sheet.planview .pside{position:sticky;top:0}
+  .sheet.planview .pmap{height:min(46vh,480px)}
+  .sheet.planview .pbar{border-radius:0 0 22px 22px}
+  .sheet.planview .pbar .bbtn{max-width:260px}
+  .sheet.planview .pbar{justify-content:flex-end}
+}
+@keyframes pop{from{transform:scale(.98);opacity:.6}to{transform:none;opacity:1}}

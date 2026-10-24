@@ -20,6 +20,13 @@ async function post(action, payload){
     throw new Error(j.error || (r.status === 504 ? "The planner took too long this time. Please try again." : "Something went wrong (" + r.status + "). Please try again.")); }
   return j;
 }
+// The planner opens as a centred window on computers (wide two-column view for the plan) and full-screen on phones.
+function shell(title, html, wide){
+  A().sheetShell(title, html);
+  const sh = $("#sheetHost .sheet"); if(!sh) return;
+  sh.classList.add("planflow"); if(wide) sh.classList.add("planview");
+  const sc = sh.closest(".scrim"); if(sc) sc.classList.add("center");
+}
 let leafletP = null;
 function leaflet(){
   if(window.L) return Promise.resolve(window.L);
@@ -51,7 +58,7 @@ async function open(opts = {}){
   PL.params = P;
   const chip = (attr, val, label, on) => `<button type="button" class="chip" data-${attr}="${esc(val)}" aria-pressed="${on}">${label}</button>`;
   const render = () => {
-    A().sheetShell("Plan our day", `<form id="planForm" class="form plansetup" novalidate>
+    shell("Plan our day", `<form id="planForm" class="form plansetup" novalidate>
       ${anchor ? `<div class="anchor">${icon("star")}<span>Built around <b>${esc(anchor.title)}</b></span></div>` : ""}
       <div><label>Where do you start from?</label>
         ${P.start ? `<div class="homebox">${icon("home")}<span>${esc(P.start.label)}</span><button type="button" class="chip" id="homeChange">Change</button></div>`
@@ -110,16 +117,18 @@ async function open(opts = {}){
 }
 
 /* ---------- step 2: building ---------- */
-async function build(P){
+async function build(P, extra){
   const lines = ["Looking at events that day…", "Checking the weather…", "Finding the best spots for your family…", "Checking trains and connections…", "Picking a good lunch stop…", "Putting it all together…"];
-  A().sheetShell("Plan our day", `<div class="building"><div class="spinbig" aria-hidden="true"></div><p id="bLine">${lines[0]}</p><p class="desc">This takes about 15 seconds.</p></div>`);
+  shell("Plan our day", `<div class="building"><div class="spinbig" aria-hidden="true"></div><p id="bLine">${lines[0]}</p><p class="desc">This takes about 15 seconds.</p></div>`);
   let i = 0; const tick = setInterval(() => { const el = $("#bLine"); if(!el) return clearInterval(tick); i = Math.min(lines.length - 1, i + 1); el.textContent = lines[i]; }, 2600);
   try{
-    const { plan } = await post("build", { params: P });
-    clearInterval(tick); PL.plan = plan; PL.trip = null;
+    const { plan } = await post("build", Object.assign({ params: P }, extra || {}));
+    clearInterval(tick); PL.plan = plan; PL.trip = null; PL.params = P;
+    if(extra && extra.feedback) A().toast("Here's your new plan. Save it to keep it.");
     A().track("plan", P.anchorEventId, { step: "built", stops: plan.stops.length, vibe: P.vibe });
     show();
-  }catch(err){ clearInterval(tick); A().sheetShell("Plan our day", `<div class="building"><p>${esc(err.message)}</p><div class="btnrow"><button class="btn primary" type="button" data-plan-open>Try again</button></div></div>`); }
+  }catch(err){ clearInterval(tick); shell("Plan our day", `<div class="building"><p>${esc(err.message)}</p><div class="btnrow">${extra && PL.plan ? `<button class="btn" type="button" data-plan-back>Back to my plan</button><button class="btn primary" type="button" data-plan-retry>Try again</button>` : `<button class="btn primary" type="button" data-plan-open>Try again</button>`}</div></div>`);
+    const h = $("#sheetHost"); h.onclick = e => { if(e.target.closest("[data-plan-back]")) show(); else if(e.target.closest("[data-plan-retry]")) build(P, extra); }; }
 }
 
 /* ---------- step 3: the plan ---------- */
@@ -169,26 +178,60 @@ function show(){
   let tl = "";
   p.stops.forEach((s, i) => { tl += legHTML(p.legs[i]) + stopHTML(s, i, done.includes(i)); });
   tl += legHTML(p.legs[p.stops.length]).replace('<li class="pleg">', '<li class="pleg home">');
-  A().sheetShell(p.title, `<div class="plan2">
-    <p class="psum">${esc(dayLabel(p.day))}${w ? ` · ${esc(w.icon)} ${esc(w.text)} ${w.min}–${w.max}°${w.rain != null ? ` · ${w.rain}% rain` : ""}` : ""}</p>
-    ${p.summary ? `<p class="lede">${esc(p.summary)}</p>` : ""}
-    <div class="pstats"><span><small>Leave</small><b>${esc(p.leaveHome)}</b></span><span><small>Back</small><b>${esc(p.backHome)}</b></span><span><small>Travel</small><b>${Math.floor(p.travelMin / 60)}h${String(p.travelMin % 60).padStart(2, "0")}</b></span><span><small>About</small><b>CHF ${esc(p.costChf)}</b></span></div>
+  shell(p.title, `<div class="plan2">
+    <div class="phead">
+      <div class="phead1">
+        <p class="psum">${esc(dayLabel(p.day))}${w ? ` · ${esc(w.icon)} ${esc(w.text)} ${w.min}–${w.max}°${w.rain != null ? ` · ${w.rain}% rain` : ""}` : ""}</p>
+        ${p.summary ? `<p class="lede">${esc(p.summary)}</p>` : ""}
+      </div>
+      <div class="pstats"><span><small>Leave</small><b>${esc(p.leaveHome)}</b></span><span><small>Back</small><b>${esc(p.backHome)}</b></span><span><small>Travel</small><b>${Math.floor(p.travelMin / 60)}h${String(p.travelMin % 60).padStart(2, "0")}</b></span><span><small>About</small><b>CHF ${esc(p.costChf)}</b></span></div>
+    </div>
+    ${replanHTML()}
     ${nowNextHTML(p, done)}
-    <div id="planMap" class="pmap" aria-label="Map of the day"></div>
-    <ol class="ptl">${tl}</ol>
-    ${(p.headsUp || []).length ? `<div class="pheads"><b>Good to know</b><ul>${p.headsUp.map(h => `<li>${esc(h)}</li>`).join("")}</ul></div>` : ""}
-    ${(p.packing || []).length ? `<p class="ppack"><b>Bring:</b> ${p.packing.map(esc).join(" · ")}</p>` : ""}
-    <p class="note">Times use the official Swiss timetable; check the SBB app on the day. Prices are estimates.</p>
+    <div class="pcols">
+      <aside class="pside">
+        <div id="planMap" class="pmap" aria-label="Map of the day"></div>
+        <div class="pextra">
+          ${(p.headsUp || []).length ? `<div class="pheads"><b>Good to know</b><ul>${p.headsUp.map(h => `<li>${esc(h)}</li>`).join("")}</ul></div>` : ""}
+          ${(p.packing || []).length ? `<p class="ppack"><b>Bring:</b> ${p.packing.map(esc).join(" · ")}</p>` : ""}
+          <p class="note">Times use the official Swiss timetable; check the SBB app on the day. Prices are estimates.</p>
+        </div>
+      </aside>
+      <ol class="ptl">${tl}</ol>
+    </div>
   </div>
   <div class="sbar pbar">
     <button class="bbtn" type="button" data-psave ${PL.trip ? "disabled" : ""}>${icon("check")}<span>${PL.trip ? "Saved" : "Save"}</span></button>
     <div class="calwrap" style="flex:1"><button class="bbtn" type="button" data-psend aria-expanded="false" style="width:100%">${icon("share")}<span>Send</span></button>
       <div class="calpop up" id="pSendPop" hidden><button type="button" data-psendvia="wa">${icon("wa")} WhatsApp</button><button type="button" data-psendvia="mail">${icon("mail")} Email</button><button type="button" data-psendvia="copy">${icon("link")} Copy link</button></div></div>
     <button class="bbtn main" type="button" data-pcal>${icon("cal")}<span>Calendar</span></button>
-  </div>`);
-  const sh = $("#sheetHost .sheet"); sh.classList.add("planview");
+  </div>`, true);
   drawMap(p);
   wirePlan();
+}
+/* ---------- re-plan the whole day with feedback ---------- */
+const FEEDBACK = ["Less travel", "Closer to home", "More for the kids", "More indoors", "More outdoors", "Cheaper", "Start later", "Finish earlier", "A different area", "Better food stop", "Include an event"];
+function replanHTML(){
+  return `<div class="replan" id="replan">
+    <button type="button" class="replan-open" data-replan-open>${icon("route")}<span><b>Not quite right? Re-plan the day</b><small>Tell us what to change and we'll make a new plan</small></span><span aria-hidden="true">›</span></button>
+    <div class="replan-box" id="replanBox" hidden>
+      <p class="desc">What should be different?</p>
+      <div class="chips" id="fbChips">${FEEDBACK.map(f => `<button type="button" class="chip" data-fb="${esc(f)}" aria-pressed="false">${esc(f)}</button>`).join("")}</div>
+      <textarea id="fbText" class="inp" rows="2" maxlength="300" placeholder="Anything else? e.g. 'skip the market, add a playground', 'we have a car today'"></textarea>
+      <div class="btnrow"><button type="button" class="btn" data-replan-cancel>Cancel</button><button type="button" class="btn primary" data-replan-go>Make a new plan</button></div>
+    </div>
+  </div>`;
+}
+function replan(){
+  const picks = [...document.querySelectorAll("#fbChips [aria-pressed=true]")].map(b => b.dataset.fb);
+  const txt = ($("#fbText") && $("#fbText").value.trim()) || "";
+  if(!picks.length && !txt){ A().toast("Pick or type what to change."); return; }
+  const old = PL.plan;
+  const P = Object.assign({}, old.params || PL.params || {}, { day: old.day, start: old.start });
+  if(/we have a car|by car|driving/i.test(txt)) P.travel = "car";
+  const feedback = picks.concat(txt ? [txt] : []).join("; ");
+  A().track("plan", null, { step: "replan", feedback: feedback.slice(0, 200) });
+  build(P, { feedback, previous: old.stops.map(s => `${s.arrive || ""} ${s.name} (${s.town || ""})`.trim()) });
 }
 async function drawMap(p){
   const el = $("#planMap"); if(!el) return;
@@ -237,6 +280,10 @@ function wirePlan(){
   const host = $("#sheetHost");
   host.onclick = async e => {
     const t = e.target;
+    if(t.closest("[data-replan-open]")){ const b = $("#replanBox"); b.hidden = !b.hidden; if(!b.hidden) b.scrollIntoView({ block: "nearest", behavior: "smooth" }); return; }
+    if(t.closest("[data-replan-cancel]")){ $("#replanBox").hidden = true; return; }
+    const fb = t.closest("[data-fb]"); if(fb){ fb.setAttribute("aria-pressed", fb.getAttribute("aria-pressed") !== "true"); return; }
+    if(t.closest("[data-replan-go]")){ replan(); return; }
     const rm = t.closest("[data-rm]"); if(rm){ const i = +rm.dataset.rm; if(PL.plan.stops.length <= 1) return A().toast("A plan needs at least one stop."); const ns = PL.plan.stops.slice(); ns.splice(i, 1); return applyEdit(ns, "remove"); }
     const sw = t.closest("[data-swap]"); if(sw){ const i = +sw.dataset.swap, box = $("#alts" + i); if(!box.hidden){ box.hidden = true; return; }
       box.hidden = false; box.innerHTML = `<span class="spin"></span> Finding alternatives…`;
