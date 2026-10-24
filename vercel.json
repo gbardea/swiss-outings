@@ -35,6 +35,9 @@
     },
     "api/voice-warm.js": {
       "maxDuration": 60
+    },
+    "api/plan.js": {
+      "maxDuration": 60
     }
   },
   "crons": [
@@ -47,6 +50,10 @@
     {
       "source": "/e/:id",
       "destination": "/api/share?id=:id"
+    },
+    {
+      "source": "/t/:token",
+      "destination": "/api/share?trip=:token"
     }
   ]
 }

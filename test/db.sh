@@ -11,8 +11,8 @@ P="psql -h $D -p $PORT -U postgres -v ON_ERROR_STOP=1 -q"
 $P -c "create database t" >/dev/null
 for f in supabase/tests/local_stub.sql supabase/schema.sql supabase/tests/local_stub_live_extras.sql supabase/migrations/*.sql; do $P -d t -f "$f" >/dev/null 2>&1 || { echo "FAILED loading $f"; $P -d t -f "$f"; exit 1; }; done
 fail=0
-for t in supabase/tests/security_test.sql supabase/tests/calendar_test.sql; do
-  out=$( { echo "begin;"; cat "$t"; echo "rollback;"; } | $P -d t -At -F'|' 2>&1 | grep '|[tf]|' )
+for t in supabase/tests/security_test.sql supabase/tests/calendar_test.sql supabase/tests/trips_test.sql; do
+  raw=$( { echo "begin;"; cat "$t"; echo "rollback;"; } | $P -d t -At -F'|' 2>&1 ); out=$(echo "$raw" | grep '|[tf]|'); echo "$raw" | grep -i 'ERROR' && fail=1
   echo "$out" | awk -F'|' '{print ($2=="t"?"PASS ":"FAIL ")$1}'
   echo "$out" | grep -q '|f|' && fail=1
 done
