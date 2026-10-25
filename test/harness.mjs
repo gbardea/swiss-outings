@@ -83,6 +83,7 @@ async function fakeSupabase(page) {
   await page.route(SB + "/**", async route => {
     const r = route.request(), url = r.url(), method = r.method();
     const body = r.postData() ? JSON.parse(r.postData()) : {};
+    if (url.startsWith(SB + "/auth/v1/user") && method === "GET") return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ id: UID, email: "g@example.com", aud: "authenticated", role: "authenticated", factors: [] }) });
     if (url.startsWith(SB + "/auth/v1/factors") && method === "POST" && !/challenge|verify/.test(url)) return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ id: "f1", type: "totp", friendly_name: "x", totp: { qr_code: "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg'/>", secret: "JBSWY3DPEHPK3PXP", uri: "otpauth://totp/x" } }) });
     const rpc = url.match(/\/rest\/v1\/rpc\/(\w+)/);
     if (rpc) { calls.push({ rpc: rpc[1], body }); const f = RPC[rpc[1]]; return route.fulfill({ status: f ? 200 : 404, contentType: "application/json", body: JSON.stringify(f ? f(body) : { message: "no such rpc" }) }); }

@@ -38,15 +38,30 @@
     },
     "api/plan.js": {
       "maxDuration": 60
+    },
+    "api/newsletter.js": {
+      "maxDuration": 60
     }
   },
   "crons": [
     {
       "path": "/api/voice-warm",
       "schedule": "40 5 * * *"
+    },
+    {
+      "path": "/api/newsletter?action=send",
+      "schedule": "0 6 * * 0"
     }
   ],
   "rewrites": [
+    {
+      "source": "/privacy",
+      "destination": "/privacy.html"
+    },
+    {
+      "source": "/impressum",
+      "destination": "/privacy.html"
+    },
     {
       "source": "/e/:id",
       "destination": "/api/share?id=:id"

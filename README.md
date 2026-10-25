@@ -24,8 +24,11 @@ Deploy: import this repo in Vercel (framework: Other). Environment variables (al
 | `ANTHROPIC_API_KEY` | Claude writes the day plans, the “Listen” scripts and understands voice/typed search (preferred for all text) |
 | `CLAUDE_FAST_MODEL`, `CLAUDE_SMART_MODEL` | Optional overrides (defaults: `claude-haiku-4-5-20251001` for scripts/search, `claude-sonnet-4-6` for day plans) |
 | `OPENAI_API_KEY` | Audio only: the natural “Listen” voice and transcribing recorded speech in browsers without built-in speech recognition. Also used for text if no Claude key is set. Without any key: phone voice + keyword search |
+| `ELEVENLABS_API_KEY`, `ELEVENLABS_VOICE_ID`, `ELEVENLABS_MODEL` | Preferred for audio when set: the “Listen” voice and voice-search transcription (falls back to OpenAI) |
 | `VOICE_NAME`, `OPENAI_TTS_MODEL`, `OPENAI_TEXT_MODEL`, `OPENAI_STT_MODEL` | Optional overrides (defaults: `coral`, `gpt-4o-mini-tts`, `gpt-4o-mini`, `gpt-4o-mini-transcribe`) |
 | `RESEND_API_KEY`, `CONTACT_TO`, `CONTACT_FROM` | Emailing contact messages to the owner |
+| `CRON_SECRET` | Protects the cron endpoints; the same value is stored in `app_config` key `newsletter` so the database trusts the weekly email sender |
+| `NEWSLETTER_FROM` | Sender of “Swiss Outings Sunday” (default `Swiss Outings <hello@swissoutings.com>`) |
 | `CRON_SECRET` | Protects the daily voice warm-up cron |
 | `CAL_ENC_KEY` | 32 random bytes (base64) used to encrypt calendar connections; required for “When can we go?” |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | “Connect Google Calendar” (read-only free/busy scope; redirect URI `https://www.swissoutings.com/api/cal?action=google-callback`) |

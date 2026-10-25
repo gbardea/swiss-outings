@@ -42,6 +42,7 @@ const V = {
         <div class="panel"><h3>Active people per day (30 days)</h3><div class="chart">${daily.map(d=>`<div style="height:${d.active/max*100}%" title="${esc(d.day)}: ${d.active} active, ${d.actions} actions, ${d.signups} sign-ups"></div>`).join("")}</div><div class="chart-x"><span>${esc(daily[0]&&daily[0].day||"")}</span><span>today</span></div></div>
         <div class="panel"><h3>Events added by the morning scan (30 days)</h3><div class="chart">${(o.added_daily||[]).map(d=>`<div class="alt" style="height:${d.n/maxA*100}%" title="${esc(d.day)}: ${d.n} new"></div>`).join("")||'<p class="muted">No data</p>'}</div><div class="chart-x"><span></span><span>today</span></div></div>
       </div>
+      <div class="panel"><h3>Sunday email</h3><p class="muted">Goes out every Sunday around 7:00 to everyone who opted in.</p><button class="btn" type="button" id="nlTest">Send me this week's email now</button> <span class="muted" id="nlMsg"></span></div>
       <div class="panel"><h3>Last morning scan</h3><p><b>${esc(dt(scan.lastRun))}</b> · ${esc(scan.lastAdded??0)} new<br><span class="muted">${esc(scan.lastNote||"")}</span></p></div>
       <div class="panel"><h3>Latest activity</h3><table><tbody id="latest"></tbody></table><p><a href="#activity">See all activity →</a></p></div>`;
     const act = await rpc("admin_recent_activity",{p_limit:15});
@@ -132,6 +133,9 @@ document.addEventListener("click", e=>{
   const dn=t.closest("[data-done]"); if(dn){ rpc("admin_message_done",{p_id:+dn.dataset.done,p_done:dn.dataset.v==="1"}).then(()=>{ V.messages(); badge(); }); return; }
   const a=t.closest('a[href^="#"]'); if(a && V[a.getAttribute("href").slice(1)]){ e.preventDefault(); show(a.getAttribute("href").slice(1)); }
 });
+document.addEventListener("click", async e=>{ if(e.target.id!=="nlTest") return; const m=$("#nlMsg"); m.textContent="Sending…";
+  try{ const {data:{session}}=await sb.auth.getSession(); const r=await fetch("/api/newsletter?action=test",{method:"POST",headers:{Authorization:"Bearer "+session.access_token}}); const j=await r.json().catch(()=>({}));
+    m.textContent = r.ok ? (j.sent ? "Sent! Check your inbox." : (j.note||"Nothing sent.")) : (j.error||("Error "+r.status)); }catch(x){ m.textContent="Couldn't send: "+x.message; } });
 document.addEventListener("keydown", e=>{ if(e.key==="Escape") $("#drawer").innerHTML=""; });
 async function badge(){ try{ const o=await rpc("admin_overview"); const b=document.querySelector('[data-tab="messages"]'); b.innerHTML="Messages"+(o.messages_open?`<span class="badge">${o.messages_open}</span>`:""); }catch(x){} }
 

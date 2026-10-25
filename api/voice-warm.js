@@ -9,7 +9,7 @@ const MAX = 15;
 module.exports = async (req, res) => {
   const secret = process.env.CRON_SECRET;
   if (secret && req.headers.authorization !== `Bearer ${secret}`) { res.status(401).send("unauthorized"); return; }
-  if (!process.env.OPENAI_API_KEY) { res.status(200).json({ skipped: "no OPENAI_API_KEY" }); return; }
+  if (!require("../lib/tts").ttsProvider()) { res.status(200).json({ skipped: "no ELEVENLABS_API_KEY or OPENAI_API_KEY" }); return; }
   const since = new Date(Date.now() - 2 * 864e5).toISOString().slice(0, 10);
   const r = await fetch(`${URL_}/rest/v1/events?first_seen=gte.${since}&select=id,data&order=start_date.asc&limit=${MAX}`, { headers: { apikey: KEY, Authorization: `Bearer ${KEY}` } });
   const rows = r.ok ? await r.json() : [];
