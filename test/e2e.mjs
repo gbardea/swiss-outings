@@ -138,6 +138,11 @@ await check("admin users table + person drawer with history", async () => { awai
 await check("admin events + messages tabs", async () => { await page.click('[data-tab="events"]'); await page.waitForSelector("#days"); await page.click('[data-tab="messages"]'); await page.waitForSelector(".msg"); assert(/Moods/.test(await page.textContent("#main"))); });
 await page.screenshot({ path: path.join(ROOT, "test/screens/admin.png"), fullPage: false }).catch(() => {});
 await page.context().close();
+page = await newPage("admin1");
+const callsBeforeMfa = calls.length;
+await page.goto(BASE + "/admin.html");
+await check("admin with password only must set up / enter a 6-digit code first", async () => { await page.waitForSelector(".mfa #mfaC", { timeout: 8000 }); const t = await page.textContent("#main"); assert(/step 2/.test(t) && /authenticator/i.test(t) && /JBSWY3DPEHPK3PXP/.test(t), t.slice(0, 300)); assert(!(await page.$(".kpi")), "no dashboard data before the code"); assert(!calls.slice(callsBeforeMfa).some(c => /^admin_/.test(c.rpc || "")), "no admin data requested"); });
+await page.context().close();
 page = await newPage("member");
 await page.goto(BASE + "/admin.html");
 await check("non-admins are turned away from the admin page", async () => { await page.waitForSelector(".center"); assert(/Admins only/.test(await page.textContent(".center"))); });

@@ -69,7 +69,7 @@ function rest(table, method, url, body) {
 const RPC = {
   coverage: () => ({ events: 1706, venues: 827, towns: 270, new7: 297, free: 308, gems: 1368, kids: 845, months: 13, categories: { Music: 753, Kids: 173, Outdoors: 124 }, regions: { "Zurich City": 777, "Gold Coast": 88, "Canton Zurich": 279, "Switzerland": 562 }, tags: { village: 275, nature: 147, wildlife: 73, stargazing: 18, "guided hike": 49, "hands-on": 146, "small venue": 780 }, sources: 343, sourceGroups: { zurich: 132, nature: 101, niche: 110 }, lastRun: new Date().toISOString(), lastAdded: "19", samples: [{ id: EVENTS[1].id, title: EVENTS[1].title, city: "Zurich", start: EVENTS[1].start, category: "Music" }] }),
   my_codes: () => [{ join_code: "JOINCODE", friend_code: "FRNDCODE" }],
-  friend_picks: () => [], log_activity: b => (b.p || []).length, submit_message: () => 42, i_am_admin: () => SCENARIO === "admin",
+  friend_picks: () => [], log_activity: b => (b.p || []).length, submit_message: () => 42, i_am_admin: () => SCENARIO === "admin", i_am_admin_account: () => SCENARIO === "admin" || SCENARIO === "admin1",
   create_household: () => HH, join_household: () => null, delete_my_account: () => null,
   admin_overview: () => ({ users: 2, confirmed: 2, households: 2, active7: 2, active1: 1, signups7: 0, events_upcoming: 1700, events_added7: 120, picks: 9, hidden: 1, messages_open: 1, scan: { lastRun: new Date().toISOString(), lastAdded: 19, lastNote: "19 finds" }, daily: [{ day: iso(today), active: 2, signups: 0, actions: 30 }], added_daily: [{ day: iso(today), n: 19 }] }),
   admin_recent_activity: () => [{ at: new Date().toISOString(), user_id: UID, who: "Gal", kind: "keen", event_id: EVENTS[1].id, event_title: EVENTS[1].title, meta: {} }, { at: new Date().toISOString(), user_id: UID, who: "Gal", kind: "search", event_id: null, event_title: null, meta: { q: "kids this weekend", voice: true, results: 12 } }],
@@ -83,13 +83,16 @@ async function fakeSupabase(page) {
   await page.route(SB + "/**", async route => {
     const r = route.request(), url = r.url(), method = r.method();
     const body = r.postData() ? JSON.parse(r.postData()) : {};
+    if (url.startsWith(SB + "/auth/v1/factors") && method === "POST" && !/challenge|verify/.test(url)) return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ id: "f1", type: "totp", friendly_name: "x", totp: { qr_code: "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg'/>", secret: "JBSWY3DPEHPK3PXP", uri: "otpauth://totp/x" } }) });
     const rpc = url.match(/\/rest\/v1\/rpc\/(\w+)/);
     if (rpc) { calls.push({ rpc: rpc[1], body }); const f = RPC[rpc[1]]; return route.fulfill({ status: f ? 200 : 404, contentType: "application/json", body: JSON.stringify(f ? f(body) : { message: "no such rpc" }) }); }
     const t = url.match(/\/rest\/v1\/(\w+)/);
     if (t) { calls.push({ table: t[1], method, url }); const accept = r.headers()["accept"] || ""; let data = rest(t[1], method, url, body); if (accept.includes("vnd.pgrst.object") && Array.isArray(data)) data = data[0] ?? null; return route.fulfill({ status: data === null && accept.includes("vnd.pgrst.object") ? 406 : 200, contentType: "application/json", body: JSON.stringify(data ?? []) }); }
     return route.fulfill({ status: 200, contentType: "application/json", body: "{}" });
   });
-  const session = { access_token: "aaa.bbb.ccc", refresh_token: "r", token_type: "bearer", expires_in: 3600, expires_at: Math.floor(Date.now() / 1000) + 3600, user: { id: UID, email: "g@example.com", aud: "authenticated", role: "authenticated" } };
+  const b64 = o => Buffer.from(JSON.stringify(o)).toString("base64url");
+  const jwt = b64({ alg: "HS256", typ: "JWT" }) + "." + b64({ sub: UID, role: "authenticated", aal: SCENARIO === "admin" ? "aal2" : "aal1", amr: [{ method: "password", timestamp: 1 }], exp: Math.floor(Date.now() / 1000) + 3600 }) + ".sig";
+  const session = { access_token: jwt, refresh_token: "r", token_type: "bearer", expires_in: 3600, expires_at: Math.floor(Date.now() / 1000) + 3600, user: { id: UID, email: "g@example.com", aud: "authenticated", role: "authenticated" } };
   await page.addInitScript(([s]) => {
     if (s) localStorage.setItem("sb-vwqtpffnsfyazyezfcdt-auth-token", s);
     window.__opened = []; window.open = (u) => { window.__opened.push(String(u)); return null; };
