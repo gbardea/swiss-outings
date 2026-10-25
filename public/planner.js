@@ -22,8 +22,11 @@ async function post(action, payload){
 }
 // The planner opens as a centred window on computers (wide two-column view for the plan) and full-screen on phones.
 function shell(title, html, wide){
+  // re-rendering the same screen (a chip, an edit) keeps the scroll position and skips the opening animation, so nothing jumps
+  const prev = $("#sheetHost .sheet.planflow"), same = prev && prev.dataset.title === title && !!prev.classList.contains("planview") === !!wide, top = same ? prev.scrollTop : 0;
   A().sheetShell(title, html);
   const sh = $("#sheetHost .sheet"); if(!sh) return;
+  sh.dataset.title = title; if(prev) sh.classList.add("noanim"); if(same) sh.scrollTop = top;
   sh.classList.add("planflow"); if(wide) sh.classList.add("planview");
   const sc = sh.closest(".scrim"); if(sc) sc.classList.add("center");
 }
@@ -135,31 +138,37 @@ async function build(P, extra){
 function legHTML(l){
   if(!l) return "";
   const ic = l.mode === "walk" ? "🚶" : l.mode === "car" ? "🚗" : "🚆";
-  const steps = (l.steps || []).length > 1 ? `<small>${l.steps.map(s => `${esc(s.line)} ${esc(s.dep)} ${esc(s.from)} → ${esc(s.to)} ${esc(s.arr)}`).join("<br>")}</small>` : "";
-  const walks = l.mode === "train" && !l.estimated && (l.walkTo > 2 || l.walkFrom > 2) ? `<small>Walk ${l.walkTo} min to ${esc(l.fromStation)}${l.walkFrom > 2 ? ` · ${l.walkFrom} min from ${esc(l.toStation)}` : ""}</small>` : "";
-  return `<li class="pleg"><span class="lic">${ic}</span><div><b>${esc(l.depart)}</b> ${esc(l.text)}${walks}${steps}</div>${l.costChf ? `<span class="cost">~CHF ${esc(l.costChf)}</span>` : ""}</li>`;
+  const dur = m => m >= 60 ? Math.floor(m / 60) + " h " + (m % 60 ? (m % 60) + " min" : "") : m + " min";
+  // one calm line; the full connection (lines, platforms, walks) folds out on tap
+  const head = l.mode === "walk" ? `Walk ${dur(l.minutes)}` : l.mode === "car" ? `Drive about ${dur(l.minutes)}`
+    : l.estimated ? `About ${dur(l.minutes)} by public transport` : `${esc(l.depart)}–${esc(l.arrive)} · ${dur(l.minutes)}${l.changes ? ` · ${l.changes} change${l.changes > 1 ? "s" : ""}` : " · direct"}`;
+  const steps = (l.steps || []).map(s => `<li><b>${esc(s.dep)}</b> ${esc(s.line)} ${esc(s.from)} → ${esc(s.to)} <b>${esc(s.arr)}</b></li>`).join("");
+  const walks = l.mode === "train" && !l.estimated && (l.walkTo > 2 || l.walkFrom > 2) ? `<li class="w">Walk ${l.walkTo} min to ${esc(l.fromStation)}${l.walkFrom > 2 ? ` · ${l.walkFrom} min from ${esc(l.toStation)}` : ""}</li>` : "";
+  const more = l.mode === "train" ? (steps || walks ? `<ul class="lsteps">${walks}${steps}</ul>` : `<p class="lnote">${esc(l.text)}</p>`) : "";
+  const cost = l.costChf ? `<span class="cost">CHF ${esc(l.costChf)}</span>` : "";
+  return more ? `<li class="pleg"><span class="lic">${ic}</span><details><summary><span>${head}</span>${cost}</summary>${more}</details></li>`
+    : `<li class="pleg"><span class="lic">${ic}</span><div class="lsum"><span>${head}</span>${cost}</div></li>`;
 }
 function stopHTML(s, i, done){
   return `<li class="pstop ${done ? "done" : ""}" data-si="${i}">
     <div class="pnum">${PL.trip ? `<button type="button" class="tick ${done ? "on" : ""}" data-done="${i}" aria-label="${done ? "Mark as not done" : "Mark as done"}">${done ? "✓" : i + 1}</button>` : `<span>${i + 1}</span>`}</div>
     <div class="pbody">
-      <div class="ptime">${esc(s.arrive)}–${esc(s.leave)}${s.cost_chf ? ` · ~CHF ${esc(s.cost_chf)}` : s.type !== "meal" ? " · free" : ""}</div>
+      <div class="ptop"><span class="ptime">${esc(s.arrive)}–${esc(s.leave)}</span><span class="pcost">${s.cost_chf ? `CHF ${esc(s.cost_chf)}` : s.type !== "meal" ? "Free" : ""}</span></div>
       <h3>${s.type === "meal" ? "🍽 " : s.type === "event" ? "🎟 " : ""}${esc(s.name)}</h3>
-      <p class="paddr">${esc(s.address || s.town || "")}</p>
-      ${s.why ? `<p>${esc(s.why)}</p>` : ""}
-      ${s.tip ? `<p class="ptip">💡 ${esc(s.tip)}</p>` : ""}
-      ${s.kids_note ? `<p class="ptip">🧒 ${esc(s.kids_note)}</p>` : ""}
-      ${s.opening_note ? `<p class="ptip">🕒 ${esc(s.opening_note)}</p>` : ""}
+      <p class="paddr">${esc(s.town || s.address || "")}</p>
+      ${s.why ? `<p class="pwhy">${esc(s.why)}</p>` : ""}
+      ${s.tip || s.kids_note || s.opening_note ? `<details class="pmore"><summary>Tips</summary>
+        ${s.tip ? `<p>💡 ${esc(s.tip)}</p>` : ""}${s.kids_note ? `<p>🧒 ${esc(s.kids_note)}</p>` : ""}${s.opening_note ? `<p>🕒 ${esc(s.opening_note)}</p>` : ""}</details>` : ""}
       <div class="pfact" id="fact${i}" hidden></div>
       <div class="palts" id="alts${i}" hidden></div>
       <div class="pacts">
-        ${s.wiki_title ? `<button type="button" data-fact="${i}">${icon("bulb")} Fun facts</button>` : ""}
-        <button type="button" data-say="${i}">${icon("sound")} Listen</button>
-        ${s.event_id && A().S.events.some(e => e.id === s.event_id) ? `<button type="button" data-evopen="${esc(s.event_id)}">${icon("ticket")} Event</button>` : ""}
-        <a href="https://www.google.com/maps/dir/?api=1&destination=${s.lat},${s.lon}" target="_blank" rel="noopener">${icon("pin")} Directions</a>
+        ${s.wiki_title ? `<button type="button" data-fact="${i}" title="Fun facts">${icon("bulb")}<span>Facts</span></button>` : ""}
+        <button type="button" data-say="${i}" title="Listen">${icon("sound")}<span>Listen</span></button>
+        ${s.event_id && A().S.events.some(e => e.id === s.event_id) ? `<button type="button" data-evopen="${esc(s.event_id)}" title="Event details">${icon("ticket")}<span>Event</span></button>` : ""}
+        <a href="https://www.google.com/maps/dir/?api=1&destination=${s.lat},${s.lon}" target="_blank" rel="noopener" title="Directions">${icon("pin")}<span>Map</span></a>
         <span class="sp"></span>
-        <button type="button" data-swap="${i}" aria-label="Swap ${esc(s.name)} for something else">${icon("swap")} Swap</button>
-        <button type="button" class="rm" data-rm="${i}" aria-label="Remove ${esc(s.name)}">${icon("x")}</button>
+        <button type="button" data-swap="${i}" title="Swap for something else" aria-label="Swap ${esc(s.name)} for something else">${icon("swap")}<span>Swap</span></button>
+        <button type="button" class="rm" data-rm="${i}" title="Remove" aria-label="Remove ${esc(s.name)}">${icon("x")}</button>
       </div>
     </div></li>`;
 }
@@ -237,13 +246,16 @@ async function drawMap(p){
   const el = $("#planMap"); if(!el) return;
   try{
     const L = await leaflet(); if(!$("#planMap")) return;
-    const m = L.map(el, { scrollWheelZoom: false, attributionControl: true });
-    L.tileLayer("https://wmts.geo.admin.ch/1.0.0/ch.swisstopo.pixelkarte-farbe/default/current/3857/{z}/{x}/{y}.jpeg", { attribution: "© swisstopo", maxZoom: 18 }).addTo(m);
+    const m = L.map(el, { scrollWheelZoom: false, attributionControl: true, zoomControl: false });
+    L.control.zoom({ position: "bottomright" }).addTo(m);
+    // calm, light basemap (OpenStreetMap data, CARTO "Positron" style); dark variant in dark mode
+    const dark = matchMedia("(prefers-color-scheme: dark)").matches;
+    L.tileLayer(`https://{s}.basemaps.cartocdn.com/${dark ? "dark_all" : "light_all"}/{z}/{x}/{y}{r}.png`, { attribution: "© OpenStreetMap © CARTO", subdomains: "abcd", maxZoom: 19 }).addTo(m);
     const pts = p.stops.map(s => [s.lat, s.lon]);
     const all = p.start && p.start.lat ? [[p.start.lat, p.start.lon]].concat(pts) : pts;
-    if(p.start && p.start.lat) L.marker([p.start.lat, p.start.lon], { icon: L.divIcon({ className: "", html: '<div class="pm home">⌂</div>', iconSize: [26, 26], iconAnchor: [13, 13] }) }).addTo(m);
-    p.stops.forEach((s, i) => L.marker([s.lat, s.lon], { title: s.name, icon: L.divIcon({ className: "", html: `<div class="pm">${i + 1}</div>`, iconSize: [26, 26], iconAnchor: [13, 13] }) }).addTo(m).bindPopup(esc(s.name)));
-    L.polyline(all.concat(all.length > 1 ? [all[0]] : []), { color: "#D52B1E", weight: 3, dashArray: "6 6" }).addTo(m);
+    if(p.start && p.start.lat) L.marker([p.start.lat, p.start.lon], { icon: L.divIcon({ className: "", html: '<div class="pm home">⌂</div>', iconSize: [24, 24], iconAnchor: [12, 12] }) }).addTo(m);
+    p.stops.forEach((s, i) => L.marker([s.lat, s.lon], { title: s.name, icon: L.divIcon({ className: "", html: `<div class="pm">${i + 1}</div>`, iconSize: [24, 24], iconAnchor: [12, 12] }) }).addTo(m).bindPopup(esc(s.name)));
+    L.polyline(all.concat(all.length > 1 ? [all[0]] : []), { color: "#D52B1E", weight: 2, opacity: .55, dashArray: "2 6", lineCap: "round" }).addTo(m);
     m.fitBounds(all, { padding: [28, 28] });
   }catch(x){ el.innerHTML = `<p class="desc" style="padding:12px">Map unavailable right now.</p>`; }
 }

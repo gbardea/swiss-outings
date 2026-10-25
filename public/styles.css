@@ -789,3 +789,50 @@ button.st-sample{cursor:pointer}
   .sheet.planview .pbar{justify-content:flex-end}
 }
 @keyframes pop{from{transform:scale(.98);opacity:.6}to{transform:none;opacity:1}}
+
+/* ---------- planner: calmer timeline (overrides) ---------- */
+.sheet.noanim{animation:none}
+.plan2{gap:18px}
+.plan2 .lede{font-size:15.5px;color:var(--muted)}
+.pstats span{padding:7px 10px;background:transparent}
+.pstats b{font-size:16px}
+.pmap{border:0;box-shadow:0 0 0 1px var(--line)}
+.pm{width:24px;height:24px;font:700 12px/1 var(--f-body);box-shadow:0 1px 4px rgba(0,0,0,.22)}
+.pmap .leaflet-control-zoom{border:0!important;box-shadow:0 1px 4px rgba(0,0,0,.15)!important}
+.pmap .leaflet-control-zoom a{width:28px!important;height:28px!important;line-height:28px!important;font-size:16px!important;color:var(--ink)!important}
+.pmap .leaflet-control-attribution{font-size:10px;background:rgba(255,255,255,.7)!important}
+.ptl{gap:2px}
+.pleg{display:grid;grid-template-columns:22px 1fr;gap:10px;align-items:start;padding:6px 0 6px 16px;margin-left:14px;border-left:2px dotted var(--line);font-size:13.5px;color:var(--muted)}
+.pleg .lic{margin-left:-29px;width:24px;height:24px;font-size:13px;background:var(--surface)}
+.pleg summary,.pleg .lsum{display:flex;justify-content:space-between;gap:10px;align-items:center;cursor:pointer;list-style:none;padding:2px 0}
+.pleg .lsum{cursor:default}
+.pleg summary::-webkit-details-marker{display:none}
+.pleg summary>span:first-child::after{content:" ›";color:var(--line)}
+.pleg details[open] summary>span:first-child::after{content:" ⌄"}
+.pleg .cost{font:500 12px var(--f-mono);color:var(--muted);white-space:nowrap}
+.lsteps{list-style:none;margin:6px 0 4px;padding:8px 10px;background:var(--surface2);border-radius:10px;display:flex;flex-direction:column;gap:3px;font-size:12.5px}
+.lsteps b{color:var(--ink);font-weight:600}
+.lsteps .w{color:var(--muted)}
+.lnote{margin:6px 0 0;font-size:12.5px}
+.pstop{grid-template-columns:30px 1fr;gap:12px;margin:2px 0}
+.pnum span,.pnum .tick{width:26px;height:26px;font-size:12.5px;margin-top:12px}
+.pbody{padding:12px 14px 6px;gap:3px;border-color:color-mix(in srgb,var(--line) 70%,transparent);box-shadow:0 1px 2px rgba(20,24,29,.04)}
+.ptop{display:flex;justify-content:space-between;gap:8px}
+.ptime,.pcost{font:500 12px var(--f-mono);color:var(--muted)}
+.pbody h3{font-size:16.5px;line-height:1.25;margin-top:1px}
+.paddr{font-size:12.5px!important}
+.pwhy{font-size:14px!important;line-height:1.45;color:var(--ink);margin-top:4px!important}
+.pmore{margin-top:4px;font-size:13px;color:var(--muted)}
+.pmore summary{cursor:pointer;font-weight:600;color:var(--muted);font-size:12.5px;list-style:none;width:fit-content}
+.pmore summary::-webkit-details-marker{display:none}
+.pmore summary::before{content:"+ "}
+.pmore[open] summary::before{content:"– "}
+.pmore p{margin:6px 0 0!important;font-size:13px!important;line-height:1.45}
+.pacts{gap:0;margin:6px -6px 0;border-top:1px solid color-mix(in srgb,var(--line) 60%,transparent);padding-top:4px}
+.pacts button,.pacts a{font-size:12px;font-weight:500;color:var(--muted);padding:6px 7px;gap:4px}
+.pacts svg{width:14px;height:14px}
+.pacts button:hover,.pacts a:hover{color:var(--ink)}
+.pheads{background:var(--surface2);border-color:var(--line);font-size:13.5px;color:var(--muted)}
+.pheads b{color:var(--ink)}
+.replan-open{padding:9px 14px}
+@media (max-width:520px){.pacts span{display:none}.pacts button,.pacts a{padding:8px 9px}.pacts svg{width:16px;height:16px}}

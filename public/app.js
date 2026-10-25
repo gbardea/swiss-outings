@@ -158,7 +158,10 @@ const screens = {
 
   newPassword(m){
     gate(card(`<h2>Choose a new password</h2><form id="f" class="ob-form">${field("pw","New password",`type="password" minlength="8" required autocomplete="new-password"`, eye("pw"))}${msgBox(m)}<button class="btn primary ob-cta" type="submit">Save password</button></form>`));
-    $("#f").onsubmit = async ev => { ev.preventDefault(); const {error}=await sb.auth.updateUser({password:$("#pw").value}); if(error) return screens.newPassword(friendly(error.message)); history.replaceState(null,"","/"); start(); };
+    $("#f").onsubmit = async ev => { ev.preventDefault(); const b=$("#f button[type=submit]"); b.disabled=true; b.textContent="Saving…";
+      const {error}=await sb.auth.updateUser({password:$("#pw").value}); if(error) return screens.newPassword(friendly(error.message));
+      // leave "reset mode" for good, otherwise start() would ask for a new password again
+      params.delete("reset"); pwRecovery=true; history.replaceState(null,"","/"); gate(null); A.toast("Password saved. You're signed in."); start(); };
   },
 
   profile(m, showJoin){
@@ -296,7 +299,8 @@ async function start(){
   if(ev){ cacheSet("openEvent", null); history.replaceState(null,"","/"); if(S.events.some(x=>x.id===ev)) A.openSheet(ev); else A.toast("That event has finished or was removed."); }
   else if(!cacheGet("needsInstall")) A.maybeShowTips();
 }
-sb.auth.onAuthStateChange((ev)=>{ if(ev==="PASSWORD_RECOVERY") screens.newPassword(); });
+let pwRecovery=false;
+sb.auth.onAuthStateChange((ev)=>{ if(ev==="PASSWORD_RECOVERY" && !pwRecovery){ pwRecovery=true; screens.newPassword(); } });
 start();
 
 /* ---------- service worker ---------- */

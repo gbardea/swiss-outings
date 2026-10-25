@@ -78,6 +78,7 @@ await page.context().close();
   await page.goto(BASE + "/"); await page.waitForSelector(".card");
   await check("Discover shows the 'Plan our day' card", async () => { assert(await page.isVisible(".plancta")); });
   await check("first plan asks for the home address (private) and finds it", async () => { await page.click(".plancta"); await page.waitForSelector("#homeQ"); assert(/stays private/.test(await page.textContent("#planForm"))); await page.fill("#homeQ", "Seestrasse 10 Küsnacht"); await page.waitForSelector("#homeList [data-geo]"); await page.click("#homeList [data-geo]"); await page.waitForSelector(".homebox"); });
+  await check("setup: picking options doesn't jump the screen", async () => { await page.evaluate(() => document.querySelector("#sheetHost .sheet").scrollTop = 200); const before = await page.evaluate(() => document.querySelector("#sheetHost .sheet").scrollTop); await page.click('[data-vibe="city"]'); const after = await page.evaluate(() => document.querySelector("#sheetHost .sheet").scrollTop); assert(before > 50 && Math.abs(after - before) < 5, before + " → " + after); });
   await check("setup: who's coming, vibe, then Make our plan", async () => { await page.selectOption("#kidAdd", "9"); await page.selectOption("#kidAdd", "6"); await page.click('[data-vibe="nature"]'); await page.click('#planForm button[type=submit]'); await page.waitForSelector(".plan2", { timeout: 8000 });
     const b = planCalls.find(c => c.a === "build").b.params; assert(b.start.label.includes("Küsnacht") && b.who.kids.join() === "9,6" && b.vibe === "nature", JSON.stringify(b)); assert(DB.settings && DB.settings.home_label.includes("Seestrasse"), "home saved for next time"); });
   await check("plan shows stats, map, trains, stops and heads-up", async () => { const t = await page.textContent(".plan2"); assert(/08:52/.test(t) && /S7 09:02/.test(t) && /Kinderzoo/.test(t) && /Zoo closes/.test(t) && /CHF 108/.test(t), t.slice(0, 200)); assert(await page.isVisible("#planMap")); });
@@ -104,6 +105,12 @@ await page.context().close();
   await check("shared trip page works without login and hides the home address", async () => { assert(tp.status() === 200); const t = await page.textContent("body"); assert(/Kinderzoo/.test(t) && !/Seestrasse/.test(t), t.slice(0, 200)); });
   await page.context().close();
 }
+
+// 1d. Password reset link: save the new password once, then you're in (no loop)
+page = await newPage("member", { mobile: true });
+await page.goto(BASE + "/?reset=1");
+await check("password reset saves once and signs you in (no loop)", async () => { await page.waitForSelector("#gate #pw", { timeout: 8000 }); await page.fill("#pw", "a-new-password-123"); await page.click('#f button[type=submit]'); await page.waitForSelector(".card", { timeout: 8000 }); await page.waitForTimeout(800); assert(await page.evaluate(() => document.getElementById("gate").hidden), "gate closed"); assert(!(await page.$("#gate #pw")), "not asked again"); assert(!/reset/.test(page.url()), page.url()); });
+await page.context().close();
 
 // 2a. Signed-out visitor: welcome screen explains what we cover
 page = await newPage("guest", { mobile: true });
