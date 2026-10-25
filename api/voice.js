@@ -20,6 +20,7 @@ async function writeScript(e) { // Claude when ANTHROPIC_API_KEY is set, otherwi
   if (t.length < 40) throw new Error("script too short");
   return t.slice(0, 900);
 }
+const clean = err => String((err && err.message) || err || "").replace(/sk_[A-Za-z0-9]+/g, "sk_…").slice(0, 220);
 function json(res, status, body, cache) {
   res.setHeader("Content-Type", "application/json; charset=utf-8");
   res.setHeader("Cache-Control", cache);
@@ -28,6 +29,11 @@ function json(res, status, body, cache) {
 
 module.exports = async (req, res) => {
   const q = req.query || {};
+  if (q.health) { // open /api/voice?health=1 to see whether the natural voice works (never shows the key)
+    const out = { voice: TTS.ttsProvider() || "none (phone voice)", text_ai: LLM.provider() || "none", elevenlabs_key_set: !!process.env.ELEVENLABS_API_KEY, voice_id: process.env.ELEVENLABS_VOICE_ID || "default (Sarah)" };
+    if (TTS.ttsProvider()) { const t0 = Date.now(); try { const mp3 = await TTS.speak("Hello from Swiss Outings."); out.test = { ok: true, bytes: mp3.length, ms: Date.now() - t0 }; } catch (err) { out.test = { ok: false, error: clean(err) }; } }
+    return json(res, 200, out, "no-store");
+  }
   const id = String(q.id || "");
   if (!/^[A-Za-z0-9_.~:@+-]{1,200}$/.test(id)) return json(res, 400, { error: "bad id" }, "no-store");
   let e;
@@ -49,6 +55,6 @@ module.exports = async (req, res) => {
     res.status(200).send(mp3);
   } catch (err) {
     console.warn("voice", id, err && err.message);
-    return fallback(script, false);
+    return json(res, 200, { fallback: true, script: script || templateScript(e), reason: clean(err) }, "public, max-age=60, s-maxage=300");
   }
 };
