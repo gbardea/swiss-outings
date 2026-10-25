@@ -79,7 +79,7 @@ window.addEventListener("pagehide", flushLog);
 
 /* ---------- voice summaries ("Listen") ---------- */
 // Must match voiceVersion() in lib/voice.js so the edge cache is shared.
-function voiceVersion(e){ const s=[e.updatedAt||"", e.start||"", e.title||"", e.ticketStatus||"", e.priceFromCHF==null?"":e.priceFromCHF].join("|"); return hash(s).toString(36); }
+function voiceVersion(e){ const s=["v2", e.updatedAt||"", e.start||"", e.title||"", e.ticketStatus||"", e.priceFromCHF==null?"":e.priceFromCHF].join("|"); return hash(s).toString(36); }
 const VO={id:null, audio:null, state:null, left:null, utter:null};
 function voiceUrl(e){ return window.SO_native.api("/api/voice")+"?id="+encodeURIComponent(e.id)+"&v="+voiceVersion(e); }
 function stopVoice(){
