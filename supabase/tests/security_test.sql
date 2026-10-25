@@ -135,9 +135,24 @@ do $$ declare n int; begin
 end $$;
 reset role;
 
--- ADMIN -----------------------------------------------------------------
+-- ADMIN without the second step (password only) is refused -------------
 set local role authenticated;
-select set_config('request.jwt.claims','{"sub":"00000000-0000-0000-0000-0000000000ad","role":"authenticated"}',true);
+select set_config('request.jwt.claims','{"sub":"00000000-0000-0000-0000-0000000000ad","role":"authenticated","aal":"aal1"}',true);
+do $$ declare ok boolean; begin
+  insert into t_res(name,ok) values ('admin account without 2-step code is not admin', not public.i_am_admin() and public.i_am_admin_account());
+  begin perform public.admin_overview(); insert into t_res(name,ok) values ('admin functions need the 2-step code', false);
+  exception when others then insert into t_res(name,ok) values ('admin functions need the 2-step code', true); end;
+  insert into t_res(name,ok) values ('admin lists are empty without the 2-step code', not exists (select 1 from public.admin_users()) and not exists (select 1 from public.admin_messages()));
+end $$;
+reset role;
+set local role authenticated;
+select set_config('request.jwt.claims','{"sub":"00000000-0000-0000-0000-0000000000a1","role":"authenticated","aal":"aal2"}',true);
+do $$ begin insert into t_res(name,ok) values ('a normal user with 2-step is still not admin', not public.i_am_admin() and not public.i_am_admin_account()); end $$;
+reset role;
+
+-- ADMIN (password + code) -----------------------------------------------
+set local role authenticated;
+select set_config('request.jwt.claims','{"sub":"00000000-0000-0000-0000-0000000000ad","role":"authenticated","aal":"aal2"}',true);
 do $$ declare n int; j jsonb; begin
   select count(*) into n from public.admin_users() where email like '%test.invalid'; insert into t_res(name,ok,info) values ('admin sees all users', n=6, n::text);
   j := public.admin_overview(); insert into t_res(name,ok) values ('admin overview works', (j->>'users')::int >= 6);

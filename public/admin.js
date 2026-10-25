@@ -138,8 +138,42 @@ async function badge(){ try{ const o=await rpc("admin_overview"); const b=docume
 (async function boot(){
   const {data:{session}} = await sb.auth.getSession();
   if(!session){ $("#main").innerHTML=`<div class="center"><h2>Please sign in</h2><p class="muted">Sign in to Swiss Outings first, then come back to this page.</p><a class="btn p" href="/">Open Swiss Outings</a></div>`; return; }
+  const {data:isAccount} = await sb.rpc("i_am_admin_account");
+  if(!isAccount){ $("#main").innerHTML=`<div class="center"><h2>Admins only</h2><p class="muted">This page is only for the people who run Swiss Outings.</p><a class="btn p" href="/">Back to events</a></div>`; return; }
+  if(!(await secondStep())) return;
   const {data:isAdmin} = await sb.rpc("i_am_admin");
-  if(!isAdmin){ $("#main").innerHTML=`<div class="center"><h2>Admins only</h2><p class="muted">This page is only for the people who run Swiss Outings.</p><a class="btn p" href="/">Back to events</a></div>`; return; }
+  if(!isAdmin){ $("#main").innerHTML=`<div class="center"><h2>Couldn't confirm admin access</h2><p class="muted">Please reload the page and enter a fresh code.</p></div>`; return; }
   show(A.tab); badge();
 })();
+
+/* ---------- second step: 6-digit code from an authenticator app (Supabase MFA) ---------- */
+// Returns true when this session already has the second step (aal2); otherwise shows the setup or code screen and returns false.
+async function secondStep(){
+  let lvl=null; try{ const r=await sb.auth.mfa.getAuthenticatorAssuranceLevel(); lvl=r.data&&r.data.currentLevel; }catch(x){}
+  if(lvl==="aal2") return true;
+  let factors=[]; try{ const r=await sb.auth.mfa.listFactors(); factors=(r.data&&r.data.all)||[]; }catch(x){}
+  const ok=factors.find(f=>f.factor_type==="totp" && f.status==="verified");
+  const box=(inner)=>{ $("#main").innerHTML=`<div class="center mfa"><h2>🔒 Admin sign-in, step 2</h2>${inner}</div>`; };
+  const codeForm=(factorId, lead)=>`${lead}<form id="mfaF" class="mfaform"><input id="mfaC" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" placeholder="123456" aria-label="6-digit code" required><button class="btn p" type="submit">Unlock admin</button></form><p class="muted" id="mfaMsg" role="alert"></p>`;
+  const wire=(factorId)=>{ const f=$("#mfaF"); setTimeout(()=>$("#mfaC").focus(),50);
+    f.onsubmit=async e=>{ e.preventDefault(); const code=$("#mfaC").value.replace(/\D/g,""); $("#mfaMsg").textContent="Checking…";
+      const {error}=await sb.auth.mfa.challengeAndVerify({factorId, code});
+      if(error){ $("#mfaMsg").textContent="That code didn't work. Wait for the next code and try again."; $("#mfaC").value=""; return; }
+      location.reload(); }; };
+  if(ok){
+    box(codeForm(ok.id, `<p class="muted">Open your authenticator app (Google Authenticator, 1Password, Authy…) and type the 6-digit code for <b>Swiss Outings</b>.</p>`));
+    wire(ok.id); return false;
+  }
+  // first time: set up the authenticator
+  for(const f of factors.filter(f=>f.status!=="verified")){ try{ await sb.auth.mfa.unenroll({factorId:f.id}); }catch(x){} }
+  const {data, error}=await sb.auth.mfa.enroll({factorType:"totp", friendlyName:"Swiss Outings admin "+new Date().toISOString().slice(0,10)});
+  if(error||!data||!data.totp){ box(`<p class="muted">Couldn't start the setup: ${esc((error&&error.message)||"unknown error")}. Check that MFA (TOTP) is enabled in Supabase → Authentication → Multi-factor.</p>`); return false; }
+  box(codeForm(data.id, `<p class="muted">For extra safety the admin pages need a second step. One-time setup:</p>
+    <ol class="mfasteps"><li>Install an authenticator app on your phone (Google Authenticator, Microsoft Authenticator, 1Password or Authy).</li>
+    <li>In the app, tap <b>+</b> and scan this code:</li></ol>
+    <img class="mfaqr" alt="QR code for your authenticator app" src="${esc(data.totp.qr_code)}">
+    <p class="muted small">Can't scan? Enter this key by hand: <code>${esc(data.totp.secret)}</code></p>
+    <p class="muted">3. Type the 6-digit code the app shows:</p>`));
+  wire(data.id); return false;
+}
 })();
