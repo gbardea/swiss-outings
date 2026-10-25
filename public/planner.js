@@ -248,9 +248,8 @@ async function drawMap(p){
     const L = await leaflet(); if(!$("#planMap")) return;
     const m = L.map(el, { scrollWheelZoom: false, attributionControl: true, zoomControl: false });
     L.control.zoom({ position: "bottomright" }).addTo(m);
-    // calm, light basemap (OpenStreetMap data, CARTO "Positron" style); dark variant in dark mode
-    const dark = matchMedia("(prefers-color-scheme: dark)").matches;
-    L.tileLayer(`https://{s}.basemaps.cartocdn.com/${dark ? "dark_all" : "light_all"}/{z}/{x}/{y}{r}.png`, { attribution: "© OpenStreetMap © CARTO", subdomains: "abcd", maxZoom: 19 }).addTo(m);
+    // swisstopo's grey national map (free, no key), softened with CSS (.pmap .leaflet-tile-pane) into a calm, light background
+    L.tileLayer("https://wmts.geo.admin.ch/1.0.0/ch.swisstopo.pixelkarte-grau/default/current/3857/{z}/{x}/{y}.jpeg", { attribution: "© swisstopo", maxZoom: 18 }).addTo(m);
     const pts = p.stops.map(s => [s.lat, s.lon]);
     const all = p.start && p.start.lat ? [[p.start.lat, p.start.lon]].concat(pts) : pts;
     if(p.start && p.start.lat) L.marker([p.start.lat, p.start.lon], { icon: L.divIcon({ className: "", html: '<div class="pm home">⌂</div>', iconSize: [24, 24], iconAnchor: [12, 12] }) }).addTo(m);

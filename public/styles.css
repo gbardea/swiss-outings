@@ -836,3 +836,7 @@ button.st-sample{cursor:pointer}
 .pheads b{color:var(--ink)}
 .replan-open{padding:9px 14px}
 @media (max-width:520px){.pacts span{display:none}.pacts button,.pacts a{padding:8px 9px}.pacts svg{width:16px;height:16px}}
+/* soften the swisstopo grey map into a quiet background */
+.pmap .leaflet-tile-pane{filter:grayscale(1) contrast(.7) brightness(1.15)}
+.pmap .leaflet-container{background:#F4F5F3}
+@media (prefers-color-scheme:dark){.pmap .leaflet-tile-pane{filter:grayscale(1) invert(1) contrast(.75) brightness(.9)}}
