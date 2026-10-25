@@ -1,0 +1,4 @@
+confirm-signup: "Welcome to Swiss Outings! Confirm your email 👋"
+reset-password: "Reset your Swiss Outings password"
+change-email: "Confirm your new email for Swiss Outings"
+magic-link: "Your Swiss Outings sign-in link"
