@@ -120,12 +120,20 @@ function listen(id){
   // iOS needs audio and speech to start inside the tap, so start both "unlocks" right here.
   if(window.speechSynthesis){ try{ const w=new SpeechSynthesisUtterance(" "); w.volume=0; speechSynthesis.speak(w); }catch(x){} }
   const a=new Audio(); VO.audio=a; a.preload="auto"; a.src=voiceUrl(e);
-  a.onplaying=()=>{ if(VO.audio!==a) return; VO.state="playing"; paintListen(id); };
-  a.ontimeupdate=()=>{ if(VO.audio!==a||!isFinite(a.duration)) return; const l=Math.ceil(a.duration-a.currentTime); if(l!==VO.left){ VO.left=l; paintListen(id); } };
-  a.onended=()=>{ if(VO.audio===a) stopVoice(); };
+  const wire=el=>{
+    el.onplaying=()=>{ if(VO.audio!==el) return; VO.state="playing"; paintListen(id); };
+    el.ontimeupdate=()=>{ if(VO.audio!==el||!isFinite(el.duration)) return; const l=Math.ceil(el.duration-el.currentTime); if(l!==VO.left){ VO.left=l; paintListen(id); } };
+    el.onended=()=>{ if(VO.audio===el) stopVoice(); };
+  };
+  wire(a);
   a.onerror=async()=>{ if(VO.audio!==a) return; VO.audio=null;
     // The server answers with JSON when no AI voice is set up (or it failed): read that script with the phone's voice.
-    try{ const r=await fetch(voiceUrl(e)); const j=await r.json(); speakFallback(id, j.script); }catch(x){ speakFallback(id, null); } };
+    try{ const r=await fetch(voiceUrl(e)); const ct=r.headers.get("content-type")||"";
+      if(VO.id!==id) return;
+      if(/audio/.test(ct)){ // the clip exists but this browser wouldn't stream it: play it from memory instead
+        const b=new Audio(URL.createObjectURL(await r.blob())); VO.audio=b; wire(b);
+        track("listen", id, {via:"blob"}); await b.play(); return; }
+      const j=await r.json(); track("listen", id, {fallback:true, reason:String(j.reason||"no audio").slice(0,160)}); speakFallback(id, j.script); }catch(x){ speakFallback(id, null); } };
   const p=a.play(); if(p&&p.catch) p.catch(err=>{ if(err&&err.name==="NotAllowedError"&&VO.audio===a){ stopVoice(); toast("Tap Listen again to play."); } });
 }
 function audClass(a){ return a==="Parents"?"P":a==="Kids"?"K":"F"; }
