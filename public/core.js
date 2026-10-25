@@ -919,7 +919,7 @@ async function unhideEvent(id){ track("unhide", id); delete S.hidden[id]; render
 function activeCount(){ return (S.aud!=="all"?1:0)+S.cats.size+S.toggles.size+(S.when!=="all"?1:0)+(S.region!=="all"?1:0)+(S.q?1:0)+(S.from||S.to?1:0)+(S.maxPrice!=null?1:0)+(S.kw&&S.kw.length?1:0); }
 function resetFilters(){ S.aud="all"; S.cats.clear(); S.toggles.clear(); S.when="all"; S.region="all"; S.q=""; S.from=S.to=null; S.maxPrice=null; S.kw=[]; S.askSummary=null; const q=$("#q"); if(q) q.value=""; const w=$("#when"); if(w) w.value="all"; const r=$("#region"); if(r) r.value="all"; buildFilters(); }
 function updCount(){ const n=activeCount(), el=$("#fcount"); if(el){ el.hidden=!n; el.textContent=n; } const b=$("#closeFilters"); if(b) b.textContent="Show "+filtered().length+" events"; }
-function openFilters(on){ $("#filters").classList.toggle("open",on); $("#fscrim").classList.toggle("on",on); $("header.top").style.zIndex=on?"47":""; document.body.style.overflow=on?"hidden":""; if(on) updCount(); }
+function openFilters(on){ $("#filters").classList.toggle("open",on); document.body.classList.toggle("filters-open",!!on); $("#fscrim").classList.toggle("on",on); $("header.top").style.zIndex=on?"47":""; document.body.style.overflow=on?"hidden":""; if(on) updCount(); }
 function buildFilters(){
   $("#audChips").innerHTML = AUD.map(a=>`<button class="chip" data-aud="${a.k}" aria-pressed="${S.aud===a.k}">${a.sw?`<span class="dot" style="background:${a.sw}"></span>`:""}${a.l}</button>`).join("");
   $("#toggles").innerHTML = TOGGLES.map(t=>`<button class="chip" data-tg="${t.k}" aria-pressed="${S.toggles.has(t.k)}">${t.l}</button>`).join("");
