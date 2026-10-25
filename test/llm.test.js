@@ -42,11 +42,11 @@ test("Claude request: correct headers and model tiers; JSON in code fences is pa
 test("extractJSON copes with prose around the JSON", () => {
   assert.deepStrictEqual(LLM.extractJSON('Here you go: {"a":1} hope it helps'), { a: 1 });
 });
-test("Listen with Claude only: AI-written script for the phone voice, cached long", async () => {
+test("Listen with Claude only: AI-written script for the phone voice, cached briefly so adding a voice key takes effect", async () => {
   process.env.ANTHROPIC_API_KEY = "sk-ant-test"; delete process.env.OPENAI_API_KEY;
   const r = await call(require("../api/voice"), { query: { id: "lunik-20301114", v: "x" } });
   const j = JSON.parse(r.body);
-  assert.ok(j.fallback && /dreamy Swiss indie-pop/.test(j.script)); assert.match(r.headers["cache-control"], /immutable/);
+  assert.ok(j.fallback && /dreamy Swiss indie-pop/.test(j.script)); assert.match(r.headers["cache-control"], /s-maxage=3600/); assert.ok(!/immutable/.test(r.headers["cache-control"]));
 });
 test("voice search with Claude only: text works, recorded audio explains transcription isn't set up", async () => {
   const ask = require("../api/ask");

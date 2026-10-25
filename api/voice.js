@@ -40,7 +40,7 @@ module.exports = async (req, res) => {
   try {
     script = await writeScript(e);
     if (q.format === "text") return json(res, 200, { script }, "public, s-maxage=86400");
-    if (!key) return fallback(script, true); // AI-written script, read by the phone's own voice
+    if (!key) return json(res, 200, { fallback: true, script }, "public, max-age=600, s-maxage=3600"); // AI script read by the phone's voice; short cache so a voice key takes effect soon
     const mp3 = await TTS.speak(script);
     res.setHeader("Content-Type", "audio/mpeg");
     res.setHeader("Content-Length", mp3.length);
