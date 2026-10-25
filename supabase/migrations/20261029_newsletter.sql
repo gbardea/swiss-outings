@@ -16,6 +16,23 @@ revoke all on public.email_prefs from anon, authenticated;
 grant select (user_id, weekly, updated_at), insert (user_id, weekly, updated_at) on public.email_prefs to authenticated;
 grant update (user_id, weekly, updated_at) on public.email_prefs to authenticated;   -- never the unsubscribe token or send log (RLS keeps user_id = you)
 
+-- Second line of defence (also works where the grants above can't be applied): signed-in users can never
+-- choose their own token or touch the send log; only the server-side functions (run as the owner) can.
+create or replace function public._email_prefs_guard() returns trigger language plpgsql as $$
+begin
+  if current_user in ('authenticated', 'anon') then
+    if tg_op = 'INSERT' then
+      new.token := replace(gen_random_uuid()::text, '-', '') || replace(gen_random_uuid()::text, '-', '');
+      new.last_sent := null;
+    else
+      new.token := old.token; new.last_sent := old.last_sent;
+    end if;
+  end if;
+  return new;
+end $$;
+drop trigger if exists email_prefs_guard on public.email_prefs;
+create trigger email_prefs_guard before insert or update on public.email_prefs for each row execute function public._email_prefs_guard();
+
 -- One-click unsubscribe from the link in every email (no sign-in needed; the long random token is the key)
 create or replace function public.newsletter_unsubscribe(p_token text)
 returns boolean language plpgsql security definer set search_path = public as $$
