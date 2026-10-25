@@ -4,14 +4,17 @@ const { voiceVersion } = require("../lib/voice");
 const URL_ = "https://vwqtpffnsfyazyezfcdt.supabase.co";
 const KEY = "sb_publishable_CjjnuiiC3NX0OIlj2fyS2A_NyJ177I4";
 const SITE = process.env.SITE_URL || "https://www.swissoutings.com";
-const MAX = 15;
+// How many new events to pre-record per day. ElevenLabs bills per character, so by default it only records on demand
+// (when someone taps Listen; each clip is then cached for everyone). Override with VOICE_WARM_MAX.
+const MAX = () => process.env.VOICE_WARM_MAX != null ? Math.max(0, Math.min(50, +process.env.VOICE_WARM_MAX || 0)) : (process.env.ELEVENLABS_API_KEY ? 0 : 15);
 
 module.exports = async (req, res) => {
   const secret = process.env.CRON_SECRET;
   if (secret && req.headers.authorization !== `Bearer ${secret}`) { res.status(401).send("unauthorized"); return; }
   if (!require("../lib/tts").ttsProvider()) { res.status(200).json({ skipped: "no ELEVENLABS_API_KEY or OPENAI_API_KEY" }); return; }
+  if (!MAX()) { res.status(200).json({ skipped: "on-demand only (VOICE_WARM_MAX=0)" }); return; }
   const since = new Date(Date.now() - 2 * 864e5).toISOString().slice(0, 10);
-  const r = await fetch(`${URL_}/rest/v1/events?first_seen=gte.${since}&select=id,data&order=start_date.asc&limit=${MAX}`, { headers: { apikey: KEY, Authorization: `Bearer ${KEY}` } });
+  const r = await fetch(`${URL_}/rest/v1/events?first_seen=gte.${since}&select=id,data&order=start_date.asc&limit=${MAX()}`, { headers: { apikey: KEY, Authorization: `Bearer ${KEY}` } });
   const rows = r.ok ? await r.json() : [];
   const done = [];
   for (let i = 0; i < rows.length; i += 4) {
