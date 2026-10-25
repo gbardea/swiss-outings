@@ -101,7 +101,8 @@ const screens = {
         ${msgBox(m)}
         <button class="btn primary ob-cta" type="submit">Create account</button>
       </form>
-      <p class="ob-foot">Already have one? <a href="#" data-go="signin">Sign in</a></p>`, {back:"welcome"}));
+      <p class="ob-foot">Already have one? <a href="#" data-go="signin">Sign in</a></p>
+      <p class="ob-foot small">By creating an account you agree to our <a href="/privacy" target="_blank" rel="noopener">privacy policy</a>.</p>`, {back:"welcome"}));
     $("#em").value ? $("#pw").focus() : $("#em").focus();
     $("#f").onsubmit = async ev => {
       ev.preventDefault(); const email=$("#em").value.trim(), pass=$("#pw").value;
@@ -172,6 +173,7 @@ const screens = {
         ${joining
           ? field("jc","Your partner's household code",`autocapitalize="characters" autocomplete="off" spellcheck="false" placeholder="8 letters, from your partner's Settings" value="${esc(p.join||"")}" ${p.join?"readonly":""}`)
           : field("hn","Household name (optional)",`placeholder="e.g. The Müllers" autocapitalize="words"`)}
+        <label class="ob-check"><input type="checkbox" id="obWeekly" checked> <span>📬 Email me the best picks every Sunday <small>(one click to stop)</small></span></label>
         ${msgBox(m)}
         <button class="btn primary ob-cta" type="submit">Continue</button>
       </form>
@@ -190,6 +192,7 @@ const screens = {
       if(r.error) return screens.profile(friendly(r.error.message), joining);
       if(joining && !r.data) return screens.profile("We couldn't find that household code. Check it with your partner (Settings → Your household).", true);
       A.track("sign_up", null, {joined: joining ? "partner" : (p.invite ? "friend-invite" : "new")});
+      try{ const {data:{user}}=await sb.auth.getUser(); const on=!!($("#obWeekly")&&$("#obWeekly").checked); if(user) await sb.from("email_prefs").upsert({user_id:user.id, weekly:on, updated_at:new Date().toISOString()}); A.track("newsletter", null, {on, from:"signup"}); }catch(x){}
       cacheSet("pending", null); history.replaceState(null,"","/"+(cacheGet("openEvent")?"?e="+encodeURIComponent(cacheGet("openEvent")):""));
       cacheSet("needsInstall", 1);
       start();
@@ -287,7 +290,7 @@ async function start(){
   try{
     await Promise.all([loadEvents(), loadConfig()]);
     await adminImports();
-    await Promise.all([loadPicks(), loadHidden(), window.SO_planner ? window.SO_planner.loadTrips() : null]);
+    await Promise.all([loadPicks(), loadHidden(), window.SO_planner ? window.SO_planner.loadTrips() : null, A.loadEmailPrefs()]);
   }catch(e){ console.error(e); if(!S.events.length){ S.dbFailed=true; } }
   S.loaded = true;
   setSubline();

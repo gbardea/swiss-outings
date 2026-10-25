@@ -321,7 +321,8 @@ function render(){
 }
 function statusLine(){
   const m=S.meta||{}; const up=S.events.filter(e=>!isPast(e)); const nw=up.filter(isNew).length;
-  return `<div class="status-line"><button type="button" class="st-link" data-story="status"><b>${up.length}</b> upcoming · updated ${esc(m.lastRun?fmtStamp(m.lastRun):"—")} <u>How it works</u></button>${nw?`<button type="button" class="newchip" data-tg="newonly" aria-pressed="${S.toggles.has("newonly")}">✦ ${nw} new this week</button>`:""}</div>${window.SO_install?window.SO_install.bannerHTML():""}`;
+  const ask = S.uid && S.emailPrefs===false && !S.mailAskHidden ? `<div class="mailask"><span class="mi">📬</span><span><b>Get the best picks every Sunday?</b><small>A short email with this weekend's top finds for your family. Stop any time.</small></span><span class="mb"><button type="button" class="btn primary" data-weekly="1">Yes please</button><button type="button" class="btn" data-weekly="0">No thanks</button></span></div>` : "";
+  return ask + `<div class="status-line"><button type="button" class="st-link" data-story="status"><b>${up.length}</b> upcoming · updated ${esc(m.lastRun?fmtStamp(m.lastRun):"—")} <u>How it works</u></button>${nw?`<button type="button" class="newchip" data-tg="newonly" aria-pressed="${S.toggles.has("newonly")}">✦ ${nw} new this week</button>`:""}</div>${window.SO_install?window.SO_install.bannerHTML():""}`;
 }
 function fmtStamp(s){ const d=new Date(s); if(isNaN(d)) return s; const k=Math.round((dayOnly(d)-dayOnly(new Date()))/864e5); const day=k===0?"today":k===-1?"yesterday":DOW[d.getDay()]+" "+d.getDate()+" "+MON[d.getMonth()]; return day+" "+hhmm(d); }
 function weekendRange(){
@@ -596,18 +597,29 @@ async function openSettings(){
         <p class="desc" style="margin:4px 0">Your friend-code: <b class="mono" style="color:var(--ink)">${esc(h.friend_code||"")}</b></p>
         ${mine.map(f=>`<div class="hidrow"><span>${esc(names[f.friend_household_id]||"Friend")}</span><label style="display:flex;align-items:center;gap:6px;font:500 13px var(--f-body);text-transform:none;letter-spacing:0;color:var(--ink)"><input type="checkbox" data-share="${esc(f.friend_household_id)}" ${f.share_plans?"checked":""}> Share our plans</label></div>`).join("")||'<p class="desc" style="margin:4px 0">No friends connected yet.</p>'}
       </div>
+      <div id="mailSet"><label>Sunday email</label><p class="desc" style="margin:6px 0 8px">The best picks for your family, every Sunday morning. One click to stop.</p>
+        <label class="tick"><input type="checkbox" id="weeklyOn" ${S.emailPrefs&&S.emailPrefs.weekly?"checked":""}> Send me “Swiss Outings Sunday”</label></div>
       <div id="calSet"><label>Your calendar</label><p class="desc" style="margin:6px 0 8px">Used by “When can we go?” to suggest dates you're free. Only busy/free times are checked.</p><div id="calSetBody" class="desc">Checking…</div></div>
       ${S.isAdmin?`<div><label for="brief">The brief (admin)</label><p class="desc" style="margin:6px 0 8px">The daily scan reads this before it searches.</p><textarea id="brief">${esc(brief)}</textarea><div class="btnrow" style="margin-top:8px"><button class="btn primary" type="button" id="saveBrief">Save brief</button></div></div>`:""}
       <p class="note">Daily scan: every morning. ${S.config.scan&&S.config.scan.lastRun?"Last run "+esc(fmtStamp(S.config.scan.lastRun))+". "+esc(S.config.scan.lastNote||""):""}</p>
       <div><label>Hidden events (${Object.keys(S.hidden).length})</label><p class="desc" style="margin:6px 0 8px">Events your household marked “Not for us”. The daily scan learns from this list.</p>${Object.values(S.hidden).sort((a,b)=>(b.at||"").localeCompare(a.at||"")).map(x=>`<div class="hidrow"><span>${esc(x.title||x.eventId)}</span><button type="button" class="chip" data-restore="${esc(x.eventId)}">Restore</button></div>`).join("")||'<p class="desc" style="margin:0">Nothing hidden yet.</p>'}</div>
       <div class="btnrow"><button class="btn" type="button" id="signOut">Sign out</button><button class="btn" type="button" id="leaveHh" style="color:var(--bad)">Delete my account</button></div>
-      <p class="note">Privacy: we store your email, name, household and picks to run the app. Nothing is shared outside your household unless you switch on sharing for a friend. “Delete my account” permanently removes your login, email, picks and activity.</p>
+      <p class="note">Privacy: we store your email, name, household and picks to run the app. Nothing is shared outside your household unless you switch on sharing for a friend. “Delete my account” permanently removes your login, email, picks and activity. <a href="/privacy" target="_blank" rel="noopener">Privacy policy</a></p>
     </div></div></div></div>`;
   document.body.style.overflow="hidden";
   calStatus().then(c=>{ const el=$("#calSetBody"); if(!el) return; el.innerHTML = c
     ? `<div class="hidrow"><span>✓ ${esc(c.label||c.provider)}</span><button class="chip" type="button" id="calOff">Disconnect</button></div>`
     : `<button class="btn" type="button" data-act="calconnect">${icon("calq")} Connect my calendar</button>`;
     const off=$("#calOff"); if(off) off.onclick=async()=>{ await sb.rpc("delete_my_calendar"); toast("Calendar disconnected"); openSettings(); }; });
+}
+
+/* ---------- Sunday email opt-in ---------- */
+async function loadEmailPrefs(){ try{ const {data,error}=await sb.from("email_prefs").select("weekly").maybeSingle(); S.emailPrefs = error ? null : (data || false); }catch(x){ S.emailPrefs=null; } }
+async function setWeekly(on, from){
+  S.emailPrefs={weekly:!!on}; S.mailAskHidden=true; render();
+  const {error}=await sb.from("email_prefs").upsert({user_id:S.uid, weekly:!!on, updated_at:new Date().toISOString()});
+  track("newsletter", null, {on:!!on, from});
+  toast(error ? "Couldn't save that, please try again." : on ? "Done! Look out for “Swiss Outings Sunday”." : from==="prompt" ? "No problem. You can switch it on in Settings." : "Sunday email switched off.");
 }
 
 /* ---------- main menu ---------- */
@@ -621,6 +633,7 @@ function openMenu(){
     ${row("data-tips-open","phone",IG&&IG.isStandalone()?"Help":"Install the app &amp; help","Put Swiss Outings on your home screen")}
     ${row('data-contact="venue"',"pin","Suggest a venue or place","We'll check it every morning")}
     ${row('data-contact="contact"',"mail","Contact us","Questions, ideas, problems")}
+    <a class="ig-row" href="/privacy" target="_blank" rel="noopener"><span class="rowic">${icon("star")}</span><span><b>Privacy &amp; legal</b><small>What we store, who runs Swiss Outings</small></span><span aria-hidden="true">›</span></a>
     ${S.isAdmin?`<a class="ig-row" href="/admin.html"><span class="rowic">${icon("cal")}</span><span><b>Admin dashboard</b><small>Users, activity, events, messages</small></span><span aria-hidden="true">›</span></a>`:""}
   </div>`);
 }
@@ -936,6 +949,8 @@ document.addEventListener("click", ev=>{
   if(t.id==="newInvite"){ (async()=>{ const {error}=await sb.rpc("create_invite"); if(error) toast(error.message); else openSettings(); })(); return; }
   if(t.id==="connectFriend"){ (async()=>{ const {data,error}=await sb.rpc("connect_friend",{p_code:$("#friendCode").value}); if(error) toast(error.message); else if(!data) toast("We couldn't find that friend code. Check it and try again."); else { toast("Connected"); openSettings(); } })(); return; }
   if(t.id==="saveHh"){ (async()=>{ const {error}=await sb.from("households").update({name:$("#hhName").value.trim()}).eq("id",S.household.id); toast(error?error.message:"Saved"); if(!error) S.household.name=$("#hhName").value.trim(); })(); return; }
+  const wk=t.closest("[data-weekly]"); if(wk){ setWeekly(wk.dataset.weekly==="1", "prompt"); return; }
+  if(t.id==="weeklyOn"){ setWeekly(t.checked, "settings"); return; }
   if(t.id==="saveBrief"){ (async()=>{ const brief=$("#brief").value.trim(); const {error}=await sb.from("app_config").upsert({key:"brief", value:brief, updated_at:new Date().toISOString()}); if(!error) S.config.brief=brief; toast(error?"To change the brief, open the admin dashboard and enter your 6-digit code first, then save again.":"Saved. The next scan uses the new brief."); })(); return; }
   if(t.id==="signOut"){ (async()=>{ await sb.auth.signOut(); location.reload(); })(); return; }
   if(t.id==="leaveHh"){ if(t.dataset.sure!=="1"){ t.dataset.sure="1"; t.textContent="Tap again to delete"; return; } (async()=>{ const {error}=await sb.rpc("delete_my_account"); if(error){ toast("Couldn't delete: "+error.message); return; } try{ localStorage.clear(); }catch(x){} await sb.auth.signOut(); location.reload(); })(); return; }
@@ -954,5 +969,5 @@ $("#region").addEventListener("change", e=>{ S.region=e.target.value; render(); 
 
 /* ---------- boot ---------- */
 buildFilters(); render();
-window.__app={S,render,buildFilters,parseD,isPast,poster,esc,fmtStamp,toast,isNew,openSettings,openSheet,track,flushLog,maybeShowTips,openTips,openInvite,openContact,sheetShell,icon,closeSheet,authHeader,ymd,addDays,TODAY,whenText,copyPlain};
+window.__app={loadEmailPrefs,setWeekly,S,render,buildFilters,parseD,isPast,poster,esc,fmtStamp,toast,isNew,openSettings,openSheet,track,flushLog,maybeShowTips,openTips,openInvite,openContact,sheetShell,icon,closeSheet,authHeader,ymd,addDays,TODAY,whenText,copyPlain};
 })();
