@@ -29,3 +29,11 @@ test("falls back to OpenAI without an ElevenLabs key", async () => {
   const mp3 = await TTS.speak("Hi"); assert.strictEqual(mp3.toString(), "ID3openai");
   delete process.env.OPENAI_API_KEY; assert.strictEqual(TTS.ttsProvider(), null);
 });
+test("voice health check reports the provider and a test clip, never the key", async () => {
+  process.env.ELEVENLABS_API_KEY = "sk_secret123"; process.env.ANTHROPIC_API_KEY = "x";
+  const voice = require("../api/voice");
+  const r = await new Promise(resolve => { const res = { headers: {}, setHeader(k, v) { this.headers[k] = v; }, status(c) { this.c = c; return this; }, send(b) { resolve({ status: this.c, body: String(b) }); } }; voice({ query: { health: "1" } }, res); });
+  const j = JSON.parse(r.body);
+  assert.strictEqual(j.voice, "elevenlabs"); assert.strictEqual(j.test.ok, true); assert.ok(!r.body.includes("sk_secret123"));
+  delete process.env.ELEVENLABS_API_KEY; delete process.env.ANTHROPIC_API_KEY;
+});
