@@ -97,6 +97,7 @@ await page.context().close();
   await page.addInitScript(() => localStorage.setItem("so.tipsSeen", "1"));
   await planRoutes(page);
   await page.goto(BASE + "/"); await page.waitForSelector(".card");
+  await check("on a computer the filters drawer opens full height (not trapped in the header)", async () => { await page.click("#openFilters"); await page.waitForSelector(".filters.open"); const h = await page.$eval(".filters.open", el => el.getBoundingClientRect().height); assert(h > 500, "drawer height " + h); assert(await page.isVisible("#catChips")); await page.click("#closeFilters"); });
   await check("on a computer the plan opens as a centred two-column window", async () => { await page.click(".plancta"); await page.waitForSelector(".scrim.center .sheet.planflow #planForm"); await page.click('#planForm button[type=submit]'); await page.waitForSelector(".sheet.planview .pstop"); await page.waitForTimeout(400);
     const g = await page.evaluate(() => { const r = e => document.querySelector(e).getBoundingClientRect(); return { sheet: r(".sheet.planview"), map: r("#planMap"), tl: r(".ptl") }; });
     assert(g.sheet.width > 1000 && g.sheet.left > 10, "centred & wide: " + JSON.stringify(g.sheet)); assert(g.map.right <= g.tl.left + 1 && Math.abs(g.map.top - g.tl.top) < 40, "map beside timeline: " + JSON.stringify(g)); await page.screenshot({ path: path.join(ROOT, "test/screens/plan-desktop.png") }).catch(() => {}); });

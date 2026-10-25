@@ -852,3 +852,5 @@ button.st-sample{cursor:pointer}
 .ob-check{display:flex;gap:10px;align-items:flex-start;font-size:14.5px;color:var(--ink);margin:2px 0 4px;cursor:pointer;text-transform:none;letter-spacing:0;font-weight:500}
 .ob-check input{margin-top:3px;width:18px;height:18px;accent-color:#D52B1E}
 .ob-check small{color:var(--muted)}
+/* The header's blur effect would trap the fixed filters drawer inside the header on computers: switch it off while the drawer is open */
+body.filters-open header.top{backdrop-filter:none;-webkit-backdrop-filter:none;background:var(--bg)}
