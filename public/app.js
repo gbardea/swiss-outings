@@ -20,6 +20,7 @@ const pending = () => cacheGet("pending") || {};
 /* ---------- friendly errors ---------- */
 function friendly(m){
   m = String(m||"");
+  if(/aal2|mfa/i.test(m)) return "Enter the 6-digit code from your authenticator app first.";
   if(/invalid login credentials/i.test(m)) return "That email and password don't match. Try again, or reset your password.";
   if(/email not confirmed/i.test(m)) return "Please confirm your email first. Tap the link we sent you.";
   if(/already registered|already exists/i.test(m)) return "You already have an account with this email. Sign in instead.";
@@ -157,10 +158,15 @@ const screens = {
     $("#f").onsubmit = async ev => { ev.preventDefault(); const email=$("#em").value.trim(); const {error}=await sb.auth.resetPasswordForEmail(email,{redirectTo: window.SO_native.origin+"/?reset=1"}); if(error) return screens.reset(friendly(error.message)); screens.signin("Sent! Open the link in the email to choose a new password.", email); };
   },
 
-  newPassword(m){
-    gate(card(`<h2>Choose a new password</h2><form id="f" class="ob-form">${field("pw","New password",`type="password" minlength="8" required autocomplete="new-password"`, eye("pw"))}${msgBox(m)}<button class="btn primary ob-cta" type="submit">Save password</button></form>`));
+  async newPassword(m){
+    // Accounts with an authenticator app (admins) must confirm a 6-digit code before the password can change.
+    let factorId=null;
+    try{ const a=await sb.auth.mfa.getAuthenticatorAssuranceLevel(); if(a.data && a.data.nextLevel==="aal2" && a.data.currentLevel!=="aal2"){ const f=await sb.auth.mfa.listFactors(); const t=((f.data&&f.data.totp)||[]).find(x=>x.status==="verified"); factorId=t?t.id:null; } }catch(x){}
+    gate(card(`<h2>Choose a new password</h2><form id="f" class="ob-form">${field("pw","New password",`type="password" minlength="8" required autocomplete="new-password"`, eye("pw"))}${factorId?field("mc","6-digit code from your authenticator app",`inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" required placeholder="123456"`):""}${msgBox(m)}<button class="btn primary ob-cta" type="submit">Save password</button></form>`));
     $("#f").onsubmit = async ev => { ev.preventDefault(); const b=$("#f button[type=submit]"); b.disabled=true; b.textContent="Saving…";
-      const {error}=await sb.auth.updateUser({password:$("#pw").value}); if(error) return screens.newPassword(friendly(error.message));
+      const pw=$("#pw").value;
+      if(factorId){ const {error:me}=await sb.auth.mfa.challengeAndVerify({factorId, code:$("#mc").value.replace(/\D/g,"")}); if(me) return screens.newPassword("That code didn't work. Wait for the next code in your authenticator app and try again."); }
+      const {error}=await sb.auth.updateUser({password:pw}); if(error) return screens.newPassword(friendly(error.message));
       // leave "reset mode" for good, otherwise start() would ask for a new password again
       params.delete("reset"); pwRecovery=true; history.replaceState(null,"","/"); gate(null); A.toast("Password saved. You're signed in."); start(); };
   },
